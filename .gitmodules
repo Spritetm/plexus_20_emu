@@ -1,0 +1,3 @@
+[submodule "Musashi"]
+	path = Musashi
+	url = https://github.com/kstenerud/Musashi.git
