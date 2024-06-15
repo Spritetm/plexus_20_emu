@@ -5,11 +5,15 @@
 #include <stdlib.h>
 #include "Musashi/m68k.h"
 #include "uart.h"
+#include "ramrom.h"
+#include "csr.h"
 
 typedef struct mem_range_t mem_range_t;
 
 typedef unsigned int (*read_cb)(void *obj, unsigned int addr);
 typedef void (*write_cb)(void *obj, unsigned int addr, unsigned int val);
+
+FILE *tracefile=NULL;
 
 struct mem_range_t {
 	const char *name;
@@ -47,12 +51,22 @@ static mem_range_t memory[]={
 	{.name=NULL}
 };
 
+int trace_enabled=0;
+
 void dump_cpu_state() {
 	unsigned int pc=m68k_get_reg(NULL, M68K_REG_PC);
 	unsigned int sp=m68k_get_reg(NULL, M68K_REG_SP);
 	unsigned int sr=m68k_get_reg(NULL, M68K_REG_SR);
-	printf("PC 0x%08X SP 0x%08X SR 0x%08X\n", pc, sp, sr);
+
+	unsigned int d0=m68k_get_reg(NULL, M68K_REG_D0);
+
+	unsigned int mem=m68k_read_memory_8(0xc00604);
+
+	printf("PC %08X SP %08X SR %08X D0 %08X m %08X\n", pc, sp, sr, d0, mem);
 }
+
+
+static void watch_write(unsigned int addr, unsigned int val, int len);
 
 static mem_range_t *find_range_by_name(const char *name) {
 	int i=0;
@@ -75,44 +89,10 @@ static mem_range_t *find_range_by_addr(unsigned int addr) {
 	return NULL;
 }
 
-void ram_write8(void *obj, unsigned int a, unsigned int val) {
-	uint8_t *buffer=(uint8_t*)obj;
-	buffer[a]=val;
-}
-
-void ram_write16(void *obj, unsigned int a, unsigned int val) {
-	uint8_t *buffer=(uint8_t*)obj;
-	buffer[a]=(val>>8);
-	buffer[a+1]=val;
-}
-
-void ram_write32(void *obj, unsigned int a, unsigned int val) {
-	uint8_t *buffer=(uint8_t*)obj;
-	buffer[a]=(val>>24);
-	buffer[a+1]=(val>>16);
-	buffer[a+2]=(val>>8);
-	buffer[a+3]=val;
-}
-
-unsigned int ram_read8(void *obj, unsigned int a) {
-	uint8_t *buffer=(uint8_t*)obj;
-	return buffer[a];
-}
-
-unsigned int ram_read16(void *obj, unsigned int a) {
-	uint8_t *buffer=(uint8_t*)obj;
-	return buffer[a+1]+(buffer[a]<<8);
-}
-
-unsigned int ram_read32(void *obj, unsigned int a) {
-	uint8_t *buffer=(uint8_t*)obj;
-	return buffer[a+3]+(buffer[a+2]<<8)+(buffer[a+1]<<16)+(buffer[a]<<24);
-}
-
 void setup_ram(const char *name) {
 	mem_range_t *m=find_range_by_name(name);
 	assert(m);
-	m->obj=calloc(m->size, 1);
+	m->obj=ram_new(m->size);
 	m->read8=ram_read8;
 	m->read16=ram_read16;
 	m->read32=ram_read32;
@@ -122,20 +102,11 @@ void setup_ram(const char *name) {
 	printf("Set up 0x%X bytes of RAM in section '%s'.\n", m->size, m->name);
 }
 
+
 void setup_rom(const char *name, const char *filename) {
 	mem_range_t *m=find_range_by_name(name);
 	assert(m);
-	FILE *f=fopen(filename, "rb");
-	if (!f) {
-		perror(filename);
-		exit(1);
-	}
-	m->obj=malloc(m->size);
-	int r=fread(m->obj, 1, m->size, f);
-	fclose(f);
-	if (r!=m->size) {
-		printf("%s: %d bytes for rom region of %d bytes\n", m->name, r, m->size);
-	}
+	m->obj=rom_new(filename, m->size);
 	m->read8=ram_read8;
 	m->read16=ram_read16;
 	m->read32=ram_read32;
@@ -172,7 +143,7 @@ unsigned int  m68k_read_memory_32(unsigned int address) {
 #endif
 	return m->read32(m->obj, address - m->offset);
 }
-unsigned int  m68k_read_memory_16(unsigned int address) {
+unsigned int m68k_read_memory_16(unsigned int address) {
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
 		printf("Read16 from unmapped addr %08X\n", address);
@@ -187,7 +158,7 @@ unsigned int  m68k_read_memory_16(unsigned int address) {
 			return r;
 		} else {
 			printf("No read16/read8 implemented for '%s', addr 0x%08X\n", m->name, address);
-		dump_cpu_state();
+			dump_cpu_state();
 			return 0xbeef;
 		}
 	}
@@ -217,6 +188,7 @@ unsigned int m68k_read_memory_8(unsigned int address) {
 
 
 void m68k_write_memory_8(unsigned int address, unsigned int value) {
+	watch_write(address, value, 8);
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
 		printf("Write8 to unmapped addr %08X data 0x%X\n", address, value);
@@ -230,6 +202,7 @@ void m68k_write_memory_8(unsigned int address, unsigned int value) {
 }
 
 void m68k_write_memory_16(unsigned int address, unsigned int value) {
+	watch_write(address, value, 16);
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
 		printf("Write16 to unmapped addr %08X data 0x%X\n", address, value);
@@ -245,6 +218,7 @@ void m68k_write_memory_16(unsigned int address, unsigned int value) {
 }
 
 void m68k_write_memory_32(unsigned int address, unsigned int value) {
+	watch_write(address, value, 32);
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
 		printf("Write32 to unmapped addr %08X data 0x%X\n", address, value);
@@ -259,49 +233,13 @@ void m68k_write_memory_32(unsigned int address, unsigned int value) {
 	m->write32(m->obj, address - m->offset, value);
 }
 
-void setup_uart(const char *name, int is_console) {
+uart_t *setup_uart(const char *name, int is_console) {
 	mem_range_t *m=find_range_by_name(name);
 	uart_t *u=uart_new(name, is_console);
 	m->obj=u;
 	m->write8=uart_write8;
 	m->read8=uart_read8;
-}
-
-//csr: usr/include/sys/mtpr.h, note we're Robin
-
-void csr_write16(void *obj, unsigned int a, unsigned int val) {
-	if (a==0) { //reset sel
-		printf("csr write16 %x (reset sel) val %x\n", a, val);
-	} else if (a==6) { //scsi byte count
-	} else if (a==0xA) { //scsi pointer reg
-	} else if (a==0xe) { //scsi reg
-	} else if (a==0x10) { //led regs
-	} else if (a==0x18) { //kill
-		printf("csr write16 %x (kill) val %x\n", a, val);
-	} else {
-//		printf("csr write16 %x val %x\n", a, val);
-	}
-}
-
-void csr_write8(void *obj, unsigned int a, unsigned int val) {
-//	printf("csr write8 %x val %x\n", a, val);
-	//fake with a csr write16
-	csr_write16(obj, a, val);
-}
-
-
-unsigned int csr_read16(void *obj, unsigned int a) {
-//	printf("csr read16 %x\n", a);
-	if (a==0x18) {
-		//note: return 0x8000 if we are the job cpu
-		return 0x400;
-	}
-	return 0;
-}
-
-unsigned int csr_read8(void *obj, unsigned int a) {
-	//fake using read16
-	return csr_read16(obj, a-1)>>8;
+	return u;
 }
 
 unsigned int nop_read(void *obj, unsigned int a) {
@@ -311,14 +249,26 @@ unsigned int nop_read(void *obj, unsigned int a) {
 void nop_write(void *obj, unsigned int a, unsigned int val) {
 }
 
-void setup_csr(const char *name) {
+void mmio_write16(void *obj, unsigned int a, unsigned int val) {
+	//todo
+}
+
+void setup_mmio(const char *name) {
 	mem_range_t *m=find_range_by_name(name);
+	m->write16=mmio_write16;
+}
+
+
+csr_t *setup_csr(const char *name) {
+	mem_range_t *m=find_range_by_name(name);
+	csr_t *r=csr_new();
+	m->obj=r;
 	m->write8=csr_write8;
 	m->write16=csr_write16;
 	m->read16=csr_read16;
 	m->read8=csr_read8;
+	return r;
 }
-
 
 void setup_nop(const char *name) {
 	mem_range_t *m=find_range_by_name(name);
@@ -346,20 +296,38 @@ int m68k_int_cb(int level) {
 		}
 	}
 	if (!more_ints) m68k_set_irq(0);
-	printf("Int ack %x\n", r);
+//	printf("Int ack %x\n", r);
 	return r;
 }
 
 void raise_int(uint8_t vector) {
-	printf("Interrupt raised: %x\n", vector);
+//	printf("Interrupt raised: %x\n", vector);
 	vectors[vector]=1;
-	dump_cpu_state();
 	m68k_set_irq(0);
-	m68k_set_irq(7);
+	m68k_set_irq(5); //correct for uart at least
+}
+
+void m68k_trace_cb(unsigned int pc) {
+//	fprintf(tracefile, "%06x\n", pc);
+	if (!trace_enabled) return;
 	dump_cpu_state();
 }
 
+
+static void watch_write(unsigned int addr, unsigned int val, int len) {
+	if (addr==0xffffff) {
+		//
+	} else {
+		return;
+	}
+	dump_cpu_state();
+	printf("At ^^: Watch addr %06X changed to %08X\n", addr, val);
+}
+
+
+
 int main(int argc, char **argv) {
+	tracefile=fopen("trace.txt","w");
 	setup_ram("RAM");
 	setup_ram("SRAM");
 	setup_ram("RTC_RAM");
@@ -367,15 +335,19 @@ int main(int argc, char **argv) {
 	setup_ram("SYSPAGE");
 	setup_rom("U15", "../plexus-p20/ROMs/U15-MERGED.BIN"); //used to be U17
 	setup_rom("U17", "../plexus-p20/ROMs/U17-MERGED.BIN"); //used to be U19
-	setup_uart("UART_A", 1);
-	setup_uart("UART_B", 0);
-	setup_uart("UART_C", 0);
-	setup_uart("UART_D", 0);
-	setup_csr("CSR");
+	uart_t *uart[4];
+	uart[0]=setup_uart("UART_A", 1);
+	uart[1]=setup_uart("UART_B", 0);
+	uart[2]=setup_uart("UART_C", 0);
+	uart[3]=setup_uart("UART_D", 0);
+	csr_t *csr=setup_csr("CSR");
 	setup_nop("MBUSIO");
 	setup_nop("MBUSMEM");
+	setup_mmio("MMIO_WR");
 
 	//set up ROM shadow for boot
+	//technically, there's a bit in the CSR that forces bit 23 of the address high
+	//so this is a hack. ToDo: maybe implement properly.
 	mem_range_t *m=find_range_by_name("ROMSHDW");
 	mem_range_t *rom=find_range_by_name("U17");
 	printf("%x\n", rom->offset);
@@ -385,20 +357,42 @@ int main(int argc, char **argv) {
 	m->read32=rom->read32;
 	m->size=rom->size;
 
-	m68k_set_cpu_type(M68K_CPU_TYPE_68010);
-	m68k_init();
-	//note: cbs should happen after init
-	m68k_set_int_ack_callback(m68k_int_cb);
-	m68k_pulse_reset();
-	m68k_set_irq(0);
-	dump_cpu_state();
+	void *cpuctx[2];
+	cpuctx[0]=calloc(m68k_context_size(), 1); //dma cpu
+	cpuctx[1]=calloc(m68k_context_size(), 1); //job cpu
 
+	for (int i=0; i<2; i++) {
+		m68k_set_context(cpuctx[i]);
+		m68k_set_cpu_type(M68K_CPU_TYPE_68010);
+		m68k_init();
+		//note: cbs should happen after init
+		m68k_set_int_ack_callback(m68k_int_cb);
+		m68k_set_instr_hook_callback(m68k_trace_cb);
+		m68k_pulse_reset();
+		m68k_set_irq(0);
+		m68k_get_context(cpuctx[i]);
+	}
+
+	m68k_set_context(cpuctx[0]);
 	m68k_execute(10);
 	m->size=0; //disable shadow rom
+	m68k_get_context(cpuctx[0]);
 
 	while(1) {
-		m68k_execute(10);
-//		dump_cpu_state();
+		for (int i=0; i<2; i++) {
+			m68k_set_context(cpuctx[i]);
+			if (csr_cpu_is_reset(csr, i)) {
+				m68k_pulse_reset();
+			} else {
+				m68k_execute(100);
+			}
+			m68k_get_context(cpuctx[i]);
+		}
+
+		//ints go to job cpu
+		m68k_set_context(cpuctx[0]);
+		for (int i=0; i<4; i++) uart_tick(uart[i], 10);
+		m68k_get_context(cpuctx[0]);
 	}
 	return 0;
 }
