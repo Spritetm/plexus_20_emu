@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "csr.h"
 #include "emu.h"
+#include "scsi.h"
 
 //csr: usr/include/sys/mtpr.h, note we're Robin
 
@@ -74,6 +75,7 @@
 
 struct csr_t {
 	uint16_t reg[0x10];
+	scsi_t *scsi;
 };
 
 
@@ -87,6 +89,14 @@ void csr_write16(void *obj, unsigned int a, unsigned int val) {
 	csr_t *c=(csr_t*)obj;
 	if (a==CSR_O_RSEL) {
 //		printf("csr write16 %x (reset sel) val %x\n", a, val);
+	} else if (a==CSR_O_SC_C || a==CSR_O_SC_C+2) {
+		c->reg[a/2]=val;
+		scsi_set_bytecount(c->scsi, (c->reg[CSR_O_SC_C+2]<<8)+c->reg[CSR_O_SC_C]);
+	} else if (a==CSR_O_SC_P || a==CSR_O_SC_P+2) {
+		c->reg[a/2]=val;
+		scsi_set_pointer(c->scsi, (c->reg[CSR_O_SC_P+2]<<8)+c->reg[CSR_O_SC_P]);
+	} else if (a==CSR_O_SC_R) {
+		scsi_set_scsireg(c->scsi, val);
 	} else if (a==CSR_O_MISC) {
 		emu_enable_mapper(!(val&MISC_ENMAP));
 	} else if (a==CSR_O_KILL) { //kill
@@ -115,6 +125,8 @@ unsigned int csr_read16(void *obj, unsigned int a) {
 	if (a==CSR_O_KILL) {
 		//note: return 0x80 if we are the job cpu
 		if (emu_get_cur_cpu()) ret|=0x80;
+	} else if (a==CSR_O_SC_R) {
+		return scsi_get_scsireg(c->scsi);
 	}
 //	printf("csr read16 0x%X -> 0x%X\n", a, ret);
 	return ret;
@@ -159,8 +171,9 @@ void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 }
 
 
-csr_t *csr_new() {
+csr_t *csr_new(scsi_t *scsi) {
 	csr_t *ret=calloc(sizeof(csr_t), 1);
+	ret->scsi=scsi;
 	return ret;
 }
 

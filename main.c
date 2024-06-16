@@ -8,6 +8,7 @@
 #include "ramrom.h"
 #include "csr.h"
 #include "mapper.h"
+#include "scsi.h"
 
 typedef struct mem_range_t mem_range_t;
 
@@ -255,10 +256,20 @@ unsigned int nop_read(void *obj, unsigned int a) {
 void nop_write(void *obj, unsigned int a, unsigned int val) {
 }
 
-csr_t *setup_csr(const char *name, const char *mmio_name) {
+void setup_scsi(const char *name) {
+	mem_range_t *m=find_range_by_name(name);
+	m->obj=scsi_new();
+	m->write8=scsi_write8;
+	m->write16=scsi_write16;
+	m->read16=scsi_read16;
+	m->read8=scsi_read8;
+}
+
+csr_t *setup_csr(const char *name, const char *mmio_name, const char *scsi_name) {
 	mem_range_t *m=find_range_by_name(name);
 	mem_range_t *mm=find_range_by_name(mmio_name);
-	csr_t *r=csr_new();
+	mem_range_t *sc=find_range_by_name(scsi_name);
+	csr_t *r=csr_new((scsi_t*)sc->obj);
 	m->obj=r;
 	mm->obj=r;
 	m->write8=csr_write8;
@@ -406,7 +417,8 @@ int main(int argc, char **argv) {
 	uart[1]=setup_uart("UART_B", 0);
 	uart[2]=setup_uart("UART_C", 0);
 	uart[3]=setup_uart("UART_D", 0);
-	csr_t *csr=setup_csr("CSR", "MMIO_WR");
+	setup_scsi("SCSIBUF");
+	csr_t *csr=setup_csr("CSR", "MMIO_WR", "SCSIBUF");
 	mapper=setup_mapper("MAPPER", "MAPRAM", "RAM");
 	setup_nop("MBUSIO");
 	setup_nop("MBUSMEM");
