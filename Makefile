@@ -2,7 +2,7 @@ SRC = Musashi/m68kcpu.c Musashi/softfloat/softfloat.c Musashi/m68kops.c
 SRC +=  main.c uart.c csr.c ramrom.c
 
 DEPFLAGS = -MT $@ -MMD -MP
-CFLAGS=-ggdb -Wall $(DEPFLAGS)
+CFLAGS=-ggdb -Og -Wall $(DEPFLAGS)
 
 default: emu
 

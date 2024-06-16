@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "csr.h"
+#include "emu.h"
 
 //csr: usr/include/sys/mtpr.h, note we're Robin
 
@@ -49,7 +50,26 @@
 #define MISC_BOOTDMA	0x8000	/* force dma's A23 high (ACTIVE LOW ) */
 
 
+#define KILL_KILL_DMA 0x1
+#define KILL_NKILL_JOB 0x2
+#define KILL_INT_DMA 0x4
+#define KILL_INT_JOB 0x8
+#define KILL_CUR_IS_JOB 0x80
 
+
+#define	RESET_MULTERR		0x020  /* reset multibus interface error flag */
+#define	RESET_SCSI_PFLG		0x040  /* reset scsi parity error flag */
+#define	RESET_CLR_JOBINT	0x060  /* reset job processor software int */
+#define	RESET_SET_JOBINT	0x080  /* set job processor software int */
+#define	RESET_CLR_DMAINT	0x0a0  /* reset dma processor software int */
+#define	RESET_SET_DMAINT	0x0c0  /* set dma processor int */
+#define	RESET_CINTJ			0x0e0  /* reset job clock interrupt */
+#define RESET_CINTD			0x100  /* reset dma clock int */
+#define	RESET_JBERR			0x120  /* reset job bus error flag */
+#define	RESET_DBERR			0x140  /* reset dma bus error flag */
+#define	RESET_MPERR			0x160  /* reset memory parity err flag SET ON RESET*/
+#define	RESET_SWINT			0x180  /* reset switch interrupt */
+#define	RESET_SCSIBERR		0x1a0  /* reset scsi bus error flag */
 
 
 struct csr_t {
@@ -73,6 +93,7 @@ void csr_write16(void *obj, unsigned int a, unsigned int val) {
 	} else if (a==0x10) { //led regs
 	} else if (a==0x18) { //kill
 		printf("csr write16 %x (kill) val %x\n", a, val);
+		val&=0x3; //rest is set elsewhere
 	} else {
 //		printf("csr write16 %x val %x\n", a, val);
 	}
@@ -94,8 +115,9 @@ unsigned int csr_read16(void *obj, unsigned int a) {
 	csr_t *c=(csr_t*)obj;
 	unsigned int ret=c->reg[a/2];
 	if (a==0x18) {
-		//note: return 0x80 if we are the job cpu (or if the job cpu is enabled?)
 		ret=(c->reg[a/2]);
+		//note: return 0x80 if we are the job cpu (or if the job cpu is enabled?)
+		if (emu_get_cur_cpu()) ret|=0x80;
 	}
 //	printf("csr read16 0x%X -> 0x%X\n", a, ret);
 	return ret;
@@ -107,6 +129,30 @@ unsigned int csr_read8(void *obj, unsigned int a) {
 		return csr_read16(obj, a-1);
 	} else {
 		return csr_read16(obj, a)>>8;
+	}
+}
+
+void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
+	csr_t *c=(csr_t*)obj;
+	//Strange... the SET/RESET MMIO labels seem to have the opposite effect.
+	if (a==RESET_SET_JOBINT) {
+		c->reg[CSR_O_KILL/2] &= ~KILL_INT_JOB;
+		printf("CSR: Clear job int\n");
+		emu_raise_int(0x20, 0, 1);
+	} else if (a==RESET_CLR_JOBINT) {
+		c->reg[CSR_O_KILL/2] |= KILL_INT_JOB;
+		printf("CSR: Set job int\n");
+		emu_raise_int(0x20, 2, 1);
+	} else if (a==RESET_SET_DMAINT) {
+		c->reg[CSR_O_KILL/2] &= ~KILL_INT_DMA;
+		printf("CSR: Clear dma int\n");
+		emu_raise_int(0x20, 0, 0);
+	} else if (a==RESET_CLR_DMAINT) {
+		c->reg[CSR_O_KILL/2] |= KILL_INT_DMA;
+		printf("CSR: Set dma int\n");
+		emu_raise_int(0x20, 1, 0);
+	} else {
+//		printf("Unhandled MMIO write 0x%x\n", a);
 	}
 }
 

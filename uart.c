@@ -117,7 +117,7 @@ void uart_tick(uart_t *u, int ticklen_us) {
 			} else {
 				u->chan[c].ticks_to_loopback=0;
 				if (u->chan[c].regs[REG_INTCTL] & 0x18) {
-					raise_int(u->chan[c].regs[REG_VECT]);
+					emu_raise_int(u->chan[c].regs[REG_VECT], 5, 0);
 				}
 			}
 		}

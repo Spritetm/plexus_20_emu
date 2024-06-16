@@ -14,6 +14,15 @@ typedef unsigned int (*read_cb)(void *obj, unsigned int addr);
 typedef void (*write_cb)(void *obj, unsigned int addr, unsigned int val);
 
 FILE *tracefile=NULL;
+int do_tracefile=0;
+
+int insn_id=0;
+
+int cur_cpu;
+
+
+int32_t callstack[2][8192];
+int callstack_ptr[2]={0};
 
 struct mem_range_t {
 	const char *name;
@@ -30,7 +39,8 @@ struct mem_range_t {
 
 static mem_range_t memory[]={
 	{.name="ROMSHDW", .offset=0, .size=0}, ///used for boot
-	{.name="RAM",     .offset=0, .size=0x800000},
+//	{.name="RAM",     .offset=0, .size=0x200000}, //only 2MiB of RAM
+	{.name="RAM",     .offset=0, .size=0x800000}, //fully decked out with 8MiB of RAM
 	{.name="U17",     .offset=0x800000, .size=0x8000}, //used to be U19
 	{.name="U15",     .offset=0x808000, .size=0x8000}, //used to be U17
 	{.name="USRPAGE", .offset=0x900000, .size=0x2000},
@@ -54,7 +64,8 @@ static mem_range_t memory[]={
 int trace_enabled=0;
 
 void dump_cpu_state() {
-	unsigned int pc=m68k_get_reg(NULL, M68K_REG_PC);
+	//note REG_PPC is previous PC, aka the currently executing insn
+	unsigned int pc=m68k_get_reg(NULL, M68K_REG_PPC);
 	unsigned int sp=m68k_get_reg(NULL, M68K_REG_SP);
 	unsigned int sr=m68k_get_reg(NULL, M68K_REG_SR);
 
@@ -62,7 +73,15 @@ void dump_cpu_state() {
 
 	unsigned int mem=m68k_read_memory_8(0xc00604);
 
-	printf("PC %08X SP %08X SR %08X D0 %08X m %08X\n", pc, sp, sr, d0, mem);
+	printf("id %d CPU %d PC %08X SP %08X SR %08X D0 %08X m %08X\n", insn_id, cur_cpu, pc, sp, sr, d0, mem);
+}
+
+void dump_callstack() {
+	printf("Callstack (CPU %d): ", cur_cpu);
+	for (int i=callstack_ptr[cur_cpu]-1; i>=0; --i) {
+		printf("%06X ", callstack[cur_cpu][i]);
+	}
+	printf("\n");
 }
 
 
@@ -249,24 +268,17 @@ unsigned int nop_read(void *obj, unsigned int a) {
 void nop_write(void *obj, unsigned int a, unsigned int val) {
 }
 
-void mmio_write16(void *obj, unsigned int a, unsigned int val) {
-	//todo
-}
-
-void setup_mmio(const char *name) {
+csr_t *setup_csr(const char *name, const char *mmio_name) {
 	mem_range_t *m=find_range_by_name(name);
-	m->write16=mmio_write16;
-}
-
-
-csr_t *setup_csr(const char *name) {
-	mem_range_t *m=find_range_by_name(name);
+	mem_range_t *mm=find_range_by_name(mmio_name);
 	csr_t *r=csr_new();
 	m->obj=r;
+	mm->obj=r;
 	m->write8=csr_write8;
 	m->write16=csr_write16;
 	m->read16=csr_read16;
 	m->read8=csr_read8;
+	mm->write16=csr_write16_mmio;
 	return r;
 }
 
@@ -280,51 +292,74 @@ void setup_nop(const char *name) {
 	m->read32=nop_read;
 }
 
-uint8_t vectors[256]={0};
+//has a level if triggered, otherwise 0
+uint8_t vectors[2][256]={0};
+
+
+//note: acts on currently active cpu
+static void raise_highest_int() {
+	int highest_lvl=0;
+	for (int i=0x10; i<256; i++) {
+		if (highest_lvl<vectors[cur_cpu][i]) {
+			highest_lvl=vectors[cur_cpu][i];
+		}
+	}
+	m68k_set_irq(highest_lvl);
+}
 
 int m68k_int_cb(int level) {
 	int r=0xf; //unset int exc
 	int more_ints=0;
 	for (int i=0x10; i<256; i++) {
-		if (vectors[i]) {
-			if (r==0xf) {
-				vectors[i]=0;
-				r=i;
-			} else {
-				more_ints=1;
-			}
+		if (vectors[cur_cpu][i]==level) {
+			r=i;
 		}
 	}
-	if (!more_ints) m68k_set_irq(0);
+	vectors[cur_cpu][r]=0;
+	raise_highest_int();
 //	printf("Int ack %x\n", r);
 	return r;
 }
 
-void raise_int(uint8_t vector) {
+int need_raise_highest_int[2]={0};
+
+void emu_raise_int(uint8_t vector, uint8_t level, int cpu) {
 //	printf("Interrupt raised: %x\n", vector);
-	vectors[vector]=1;
-	m68k_set_irq(0);
-	m68k_set_irq(5); //correct for uart at least
+	vectors[cpu][vector]=level;
+	need_raise_highest_int[cpu]=1;
+	do_tracefile=1;
 }
 
+
 void m68k_trace_cb(unsigned int pc) {
-//	fprintf(tracefile, "%06x\n", pc);
+	insn_id++;
+	//note: pc already is advanced to the next insn when this is called
+	//but ir is not
+	static unsigned int prev_pc=0;
+	unsigned int ir=m68k_get_reg(NULL, M68K_REG_IR);
+	//decode jsr/trs instructions for callstack tracing
+	if ((ir&0xFFC0)==0x4e80) callstack[cur_cpu][callstack_ptr[cur_cpu]++]=prev_pc;
+	if (ir==0x4E75) callstack_ptr[cur_cpu]--;
+	prev_pc=pc;
+	if (do_tracefile && cur_cpu==1) fprintf(tracefile, "%d %d %06x\n", insn_id, cur_cpu, pc);
 	if (!trace_enabled) return;
 	dump_cpu_state();
 }
 
 
 static void watch_write(unsigned int addr, unsigned int val, int len) {
-	if (addr==0xffffff) {
-		//
-	} else {
+//	if (addr/4==0x001f18/4) {
+//		dump_callstack();
+//	} else {
 		return;
-	}
+//	}
 	dump_cpu_state();
 	printf("At ^^: Watch addr %06X changed to %08X\n", addr, val);
 }
 
-
+int emu_get_cur_cpu() {
+	return cur_cpu;
+}
 
 int main(int argc, char **argv) {
 	tracefile=fopen("trace.txt","w");
@@ -340,10 +375,9 @@ int main(int argc, char **argv) {
 	uart[1]=setup_uart("UART_B", 0);
 	uart[2]=setup_uart("UART_C", 0);
 	uart[3]=setup_uart("UART_D", 0);
-	csr_t *csr=setup_csr("CSR");
+	csr_t *csr=setup_csr("CSR", "MMIO_WR");
 	setup_nop("MBUSIO");
 	setup_nop("MBUSMEM");
-	setup_mmio("MMIO_WR");
 
 	//set up ROM shadow for boot
 	//technically, there's a bit in the CSR that forces bit 23 of the address high
@@ -381,6 +415,11 @@ int main(int argc, char **argv) {
 	while(1) {
 		for (int i=0; i<2; i++) {
 			m68k_set_context(cpuctx[i]);
+			cur_cpu=i;
+			if (need_raise_highest_int[i]) {
+				raise_highest_int();
+				need_raise_highest_int[i]=0;
+			}
 			if (csr_cpu_is_reset(csr, i)) {
 				m68k_pulse_reset();
 			} else {
