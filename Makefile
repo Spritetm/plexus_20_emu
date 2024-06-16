@@ -1,5 +1,5 @@
 SRC = Musashi/m68kcpu.c Musashi/softfloat/softfloat.c Musashi/m68kops.c
-SRC +=  main.c uart.c csr.c ramrom.c
+SRC +=  main.c uart.c csr.c ramrom.c mapper.c
 
 DEPFLAGS = -MT $@ -MMD -MP
 CFLAGS=-ggdb -Og -Wall $(DEPFLAGS)

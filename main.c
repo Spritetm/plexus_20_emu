@@ -7,6 +7,7 @@
 #include "uart.h"
 #include "ramrom.h"
 #include "csr.h"
+#include "mapper.h"
 
 typedef struct mem_range_t mem_range_t;
 
@@ -41,10 +42,10 @@ static mem_range_t memory[]={
 	{.name="ROMSHDW", .offset=0, .size=0}, ///used for boot
 //	{.name="RAM",     .offset=0, .size=0x200000}, //only 2MiB of RAM
 	{.name="RAM",     .offset=0, .size=0x800000}, //fully decked out with 8MiB of RAM
+	{.name="MAPRAM",  .offset=0, .size=0}, //MMU-mapped RAM
 	{.name="U17",     .offset=0x800000, .size=0x8000}, //used to be U19
 	{.name="U15",     .offset=0x808000, .size=0x8000}, //used to be U17
-	{.name="USRPAGE", .offset=0x900000, .size=0x2000},
-	{.name="SYSPAGE", .offset=0x902000, .size=0x2000},
+	{.name="MAPPER",  .offset=0x900000, .size=0x4000},
 	{.name="UART_A",  .offset=0xA00000, .size=0x40},
 	{.name="UART_B",  .offset=0xa10000, .size=0x40},
 	{.name="UART_C",  .offset=0xa20000, .size=0x40},
@@ -96,7 +97,7 @@ static mem_range_t *find_range_by_name(const char *name) {
 	return NULL;
 }
 
-//There's faster ways to do this. We don't use them for now.
+//There's faster ways to do this. We don't implement them for now.
 static mem_range_t *find_range_by_addr(unsigned int addr) {
 	int i=0;
 	while (memory[i].name!=NULL) {
@@ -134,28 +135,21 @@ void setup_rom(const char *name, const char *filename) {
 
 #define PRINT_MEMREAD 0
 
-unsigned int  m68k_read_memory_32(unsigned int address) {
+unsigned int m68k_read_memory_32(unsigned int address) {
+//	if (address==0) printf("read addr 0\n");
 	mem_range_t *m=find_range_by_addr(address);
 	//HACK! If this is set, diags get more verbose
 	if (address==0xC00644) return 1;
+	if (address==0xC006de) return 1;
 	if (!m) {
 		printf("Read32 from unmapped addr %08X\n", address);
 		dump_cpu_state();
 		return 0xdeadbeef;
 	}
 	if (!m->read32) {
-		if (m->read8) {
-			unsigned int r;
-			r=m->read8(m->obj, address - m->offset)<<24;
-			r+=m->read8(m->obj, address - m->offset+1)<<16;
-			r+=m->read8(m->obj, address - m->offset+2)<<8;
-			r+=m->read8(m->obj, address - m->offset+3);
-			return r;
-		} else {
-			printf("No read32/read8 implemented for '%s', addr 0x%08X\n", m->name, address);
-			dump_cpu_state();
-			return 0xdeadbeef;
-		}
+		printf("No read32/read8 implemented for '%s', addr 0x%08X\n", m->name, address);
+		dump_cpu_state();
+		return 0xdeadbeef;
 	}
 #if PRINT_MEMREAD
 	printf("read32 %s %x -> %x\n", m->name, address, m->read32(m->obj, address - m->offset));
@@ -170,16 +164,9 @@ unsigned int m68k_read_memory_16(unsigned int address) {
 		return 0xbeef;
 	}
 	if (!m->read16) {
-		if (m->read8) {
-			unsigned int r;
-			r=m->read8(m->obj, address - m->offset)<<8;
-			r+=m->read8(m->obj, address - m->offset+1);
-			return r;
-		} else {
-			printf("No read16/read8 implemented for '%s', addr 0x%08X\n", m->name, address);
-			dump_cpu_state();
-			return 0xbeef;
-		}
+		printf("No read16/read8 implemented for '%s', addr 0x%08X\n", m->name, address);
+		dump_cpu_state();
+		return 0xbeef;
 	}
 #if PRINT_MEMREAD
 	printf("read16 %s %x -> %x\n", m->name, address, m->read16(m->obj, address - m->offset));
@@ -282,6 +269,46 @@ csr_t *setup_csr(const char *name, const char *mmio_name) {
 	return r;
 }
 
+mapper_t *setup_mapper(const char *name, const char *mapram, const char *physram) {
+	mem_range_t *m=find_range_by_name(name);
+	mem_range_t *mr=find_range_by_name(mapram);
+	mem_range_t *pr=find_range_by_name(physram);
+
+	mapper_t *map=mapper_new(pr->obj, pr->size);
+	m->obj=map;
+	m->write32=mapper_write32;
+	m->write16=mapper_write16;
+	m->read32=mapper_read32;
+	m->read16=mapper_read16;
+
+	mr->obj=map;
+	mr->read8=mapper_ram_read8;
+	mr->read16=mapper_ram_read16;
+	mr->read32=mapper_ram_read32;
+	mr->write8=mapper_ram_write8;
+	mr->write16=mapper_ram_write16;
+	mr->write32=mapper_ram_write32;
+	return map;
+}
+
+void emu_enable_mapper(int do_enable) {
+	mem_range_t *r=find_range_by_name("RAM");
+	mem_range_t *mr=find_range_by_name("MAPRAM");
+	if (do_enable) {
+		if (r->size!=0) {
+			mr->size=r->size;
+			r->size=0;
+//			printf("Mapper ENABLED\n");
+		}
+	} else {
+		if (mr->size!=0) {
+			r->size=mr->size;
+			mr->size=0;
+//			printf("Mapper DISABLED\n");
+		}
+	}
+}
+
 void setup_nop(const char *name) {
 	mem_range_t *m=find_range_by_name(name);
 	m->write8=nop_write;
@@ -290,6 +317,12 @@ void setup_nop(const char *name) {
 	m->read8=nop_read;
 	m->read16=nop_read;
 	m->read32=nop_read;
+}
+
+mapper_t *mapper;
+
+void m68k_fc_cb(unsigned int fc) {
+	mapper_set_sysmode(mapper, fc&4);
 }
 
 //has a level if triggered, otherwise 0
@@ -309,7 +342,6 @@ static void raise_highest_int() {
 
 int m68k_int_cb(int level) {
 	int r=0xf; //unset int exc
-	int more_ints=0;
 	for (int i=0x10; i<256; i++) {
 		if (vectors[cur_cpu][i]==level) {
 			r=i;
@@ -331,6 +363,7 @@ void emu_raise_int(uint8_t vector, uint8_t level, int cpu) {
 }
 
 
+
 void m68k_trace_cb(unsigned int pc) {
 	insn_id++;
 	//note: pc already is advanced to the next insn when this is called
@@ -348,11 +381,11 @@ void m68k_trace_cb(unsigned int pc) {
 
 
 static void watch_write(unsigned int addr, unsigned int val, int len) {
-//	if (addr/4==0x001f18/4) {
-//		dump_callstack();
-//	} else {
+	if (addr/4==-1) {
+		dump_callstack();
+	} else {
 		return;
-//	}
+	}
 	dump_cpu_state();
 	printf("At ^^: Watch addr %06X changed to %08X\n", addr, val);
 }
@@ -366,8 +399,6 @@ int main(int argc, char **argv) {
 	setup_ram("RAM");
 	setup_ram("SRAM");
 	setup_ram("RTC_RAM");
-	setup_ram("USRPAGE");
-	setup_ram("SYSPAGE");
 	setup_rom("U15", "../plexus-p20/ROMs/U15-MERGED.BIN"); //used to be U17
 	setup_rom("U17", "../plexus-p20/ROMs/U17-MERGED.BIN"); //used to be U19
 	uart_t *uart[4];
@@ -376,6 +407,7 @@ int main(int argc, char **argv) {
 	uart[2]=setup_uart("UART_C", 0);
 	uart[3]=setup_uart("UART_D", 0);
 	csr_t *csr=setup_csr("CSR", "MMIO_WR");
+	mapper=setup_mapper("MAPPER", "MAPRAM", "RAM");
 	setup_nop("MBUSIO");
 	setup_nop("MBUSMEM");
 
@@ -402,6 +434,7 @@ int main(int argc, char **argv) {
 		//note: cbs should happen after init
 		m68k_set_int_ack_callback(m68k_int_cb);
 		m68k_set_instr_hook_callback(m68k_trace_cb);
+		m68k_set_fc_callback(m68k_fc_cb);
 		m68k_pulse_reset();
 		m68k_set_irq(0);
 		m68k_get_context(cpuctx[i]);
@@ -412,6 +445,8 @@ int main(int argc, char **argv) {
 	m->size=0; //disable shadow rom
 	m68k_get_context(cpuctx[0]);
 
+	int cpu_in_reset[2]={0};
+
 	while(1) {
 		for (int i=0; i<2; i++) {
 			m68k_set_context(cpuctx[i]);
@@ -421,8 +456,10 @@ int main(int argc, char **argv) {
 				need_raise_highest_int[i]=0;
 			}
 			if (csr_cpu_is_reset(csr, i)) {
-				m68k_pulse_reset();
+				cpu_in_reset[i]=1;
 			} else {
+				if (cpu_in_reset[i]) m68k_pulse_reset();
+				cpu_in_reset[i]=0;
 				m68k_execute(100);
 			}
 			m68k_get_context(cpuctx[i]);

@@ -85,14 +85,12 @@ int csr_cpu_is_reset(csr_t *csr, int cpu) {
 
 void csr_write16(void *obj, unsigned int a, unsigned int val) {
 	csr_t *c=(csr_t*)obj;
-	if (a==0) { //reset sel
-		printf("csr write16 %x (reset sel) val %x\n", a, val);
-	} else if (a==6) { //scsi byte count
-	} else if (a==0xA) { //scsi pointer reg
-	} else if (a==0xe) { //scsi reg
-	} else if (a==0x10) { //led regs
-	} else if (a==0x18) { //kill
-		printf("csr write16 %x (kill) val %x\n", a, val);
+	if (a==CSR_O_RSEL) {
+//		printf("csr write16 %x (reset sel) val %x\n", a, val);
+	} else if (a==CSR_O_MISC) {
+		emu_enable_mapper(!(val&MISC_ENMAP));
+	} else if (a==CSR_O_KILL) { //kill
+//		printf("csr write16 %x (kill) val %x\n", a, val);
 		val&=0x3; //rest is set elsewhere
 	} else {
 //		printf("csr write16 %x val %x\n", a, val);
@@ -114,9 +112,8 @@ void csr_write8(void *obj, unsigned int a, unsigned int val) {
 unsigned int csr_read16(void *obj, unsigned int a) {
 	csr_t *c=(csr_t*)obj;
 	unsigned int ret=c->reg[a/2];
-	if (a==0x18) {
-		ret=(c->reg[a/2]);
-		//note: return 0x80 if we are the job cpu (or if the job cpu is enabled?)
+	if (a==CSR_O_KILL) {
+		//note: return 0x80 if we are the job cpu
 		if (emu_get_cur_cpu()) ret|=0x80;
 	}
 //	printf("csr read16 0x%X -> 0x%X\n", a, ret);
@@ -132,25 +129,30 @@ unsigned int csr_read8(void *obj, unsigned int a) {
 	}
 }
 
+#define INTVECT_DMA 0xc2
+#define INTVECT_JOB 0xc1
+
 void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 	csr_t *c=(csr_t*)obj;
-	//Strange... the SET/RESET MMIO labels seem to have the opposite effect.
-	if (a==RESET_SET_JOBINT) {
+	//note: a has the start of MMIO as base, but RESET_* has the base of CSR,
+	//so we adjust the address here.
+	a=a+0x20;
+	if (a==RESET_CLR_JOBINT) {
+//		printf("CSR: Clear job int\n");
 		c->reg[CSR_O_KILL/2] &= ~KILL_INT_JOB;
-		printf("CSR: Clear job int\n");
-		emu_raise_int(0x20, 0, 1);
-	} else if (a==RESET_CLR_JOBINT) {
+		emu_raise_int(INTVECT_JOB, 0, 1);
+	} else if (a==RESET_SET_JOBINT) {
+//		printf("CSR: Set job int\n");
 		c->reg[CSR_O_KILL/2] |= KILL_INT_JOB;
-		printf("CSR: Set job int\n");
-		emu_raise_int(0x20, 2, 1);
-	} else if (a==RESET_SET_DMAINT) {
-		c->reg[CSR_O_KILL/2] &= ~KILL_INT_DMA;
-		printf("CSR: Clear dma int\n");
-		emu_raise_int(0x20, 0, 0);
+		emu_raise_int(INTVECT_JOB, 4, 1);
 	} else if (a==RESET_CLR_DMAINT) {
+//		printf("CSR: Clear dma int\n");
+		c->reg[CSR_O_KILL/2] &= ~KILL_INT_DMA;
+		emu_raise_int(INTVECT_DMA, 0, 0);
+	} else if (a==RESET_SET_DMAINT) {
+//		printf("CSR: Set dma int\n");
 		c->reg[CSR_O_KILL/2] |= KILL_INT_DMA;
-		printf("CSR: Set dma int\n");
-		emu_raise_int(0x20, 1, 0);
+		emu_raise_int(INTVECT_DMA, 2, 0);
 	} else {
 //		printf("Unhandled MMIO write 0x%x\n", a);
 	}
