@@ -9,6 +9,7 @@
 #include "csr.h"
 #include "mapper.h"
 #include "scsi.h"
+#include "mbus.h"
 
 typedef struct mem_range_t mem_range_t;
 
@@ -240,6 +241,17 @@ void m68k_write_memory_32(unsigned int address, unsigned int value) {
 	m->write32(m->obj, address - m->offset, value);
 }
 
+
+//Used for SCSI DMA transfers
+//ToDo: do these go through the mapper?
+int emu_read_byte(int addr) {
+	return m68k_read_memory_8(addr);
+}
+
+int emu_write_byte(int addr, int val) {
+	m68k_write_memory_8(addr, val);
+}
+
 uart_t *setup_uart(const char *name, int is_console) {
 	mem_range_t *m=find_range_by_name(name);
 	uart_t *u=uart_new(name, is_console);
@@ -274,6 +286,8 @@ csr_t *setup_csr(const char *name, const char *mmio_name, const char *scsi_name)
 	mm->obj=r;
 	m->write8=csr_write8;
 	m->write16=csr_write16;
+	m->write32=csr_write32;
+	m->read32=csr_read32;
 	m->read16=csr_read16;
 	m->read8=csr_read8;
 	mm->write16=csr_write16_mmio;
@@ -318,6 +332,18 @@ void emu_enable_mapper(int do_enable) {
 //			printf("Mapper DISABLED\n");
 		}
 	}
+}
+
+//Note this does not work as mbus accesses go through the mapper.
+void setup_mbus(const char *name) {
+	mem_range_t *m=find_range_by_name(name);
+	//note mbus needs no obj
+	m->read8=mbus_read8;
+	m->read16=mbus_read16;
+	m->read32=mbus_read32;
+	m->write8=mbus_write8;
+	m->write16=mbus_write16;
+	m->write32=mbus_write32;
 }
 
 void setup_nop(const char *name) {
@@ -421,7 +447,7 @@ int main(int argc, char **argv) {
 	csr_t *csr=setup_csr("CSR", "MMIO_WR", "SCSIBUF");
 	mapper=setup_mapper("MAPPER", "MAPRAM", "RAM");
 	setup_nop("MBUSIO");
-	setup_nop("MBUSMEM");
+	setup_mbus("MBUSMEM");
 
 	//set up ROM shadow for boot
 	//technically, there's a bit in the CSR that forces bit 23 of the address high

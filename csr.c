@@ -91,14 +91,18 @@ void csr_write16(void *obj, unsigned int a, unsigned int val) {
 //		printf("csr write16 %x (reset sel) val %x\n", a, val);
 	} else if (a==CSR_O_SC_C || a==CSR_O_SC_C+2) {
 		c->reg[a/2]=val;
-		scsi_set_bytecount(c->scsi, (c->reg[CSR_O_SC_C+2]<<8)+c->reg[CSR_O_SC_C]);
+		scsi_set_bytecount(c->scsi, ((c->reg[CSR_O_SC_C/2]<<16)+c->reg[CSR_O_SC_C/2+1])&0xffffff);
 	} else if (a==CSR_O_SC_P || a==CSR_O_SC_P+2) {
 		c->reg[a/2]=val;
-		scsi_set_pointer(c->scsi, (c->reg[CSR_O_SC_P+2]<<8)+c->reg[CSR_O_SC_P]);
+		scsi_set_pointer(c->scsi, ((c->reg[CSR_O_SC_P/2]<<16)+c->reg[CSR_O_SC_P/2+1])&0xffffff);
 	} else if (a==CSR_O_SC_R) {
 		scsi_set_scsireg(c->scsi, val);
 	} else if (a==CSR_O_MISC) {
 		emu_enable_mapper(!(val&MISC_ENMAP));
+		int v=0;
+		if ((val&MISC_SCSIDL)==0) v|=SCSI_DIAG_LATCH;
+		if ((val&MISC_DIAGPESC)) v|=SCSI_DIAG_PARITY;
+		scsi_set_diag(c->scsi, v);
 	} else if (a==CSR_O_KILL) { //kill
 //		printf("csr write16 %x (kill) val %x\n", a, val);
 		val&=0x3; //rest is set elsewhere
@@ -107,6 +111,12 @@ void csr_write16(void *obj, unsigned int a, unsigned int val) {
 	}
 	c->reg[a/2]=val;
 }
+
+void csr_write32(void *obj, unsigned int a, unsigned int val) {
+	csr_write16(obj, a, val>>16);
+	csr_write16(obj, a+2, val&0xffff);
+}
+
 
 void csr_write8(void *obj, unsigned int a, unsigned int val) {
 //	printf("csr write8 %x val %x\n", a, val);
@@ -121,6 +131,13 @@ void csr_write8(void *obj, unsigned int a, unsigned int val) {
 
 unsigned int csr_read16(void *obj, unsigned int a) {
 	csr_t *c=(csr_t*)obj;
+	int b=scsi_get_bytecount(c->scsi);
+	c->reg[CSR_O_SC_C/2]=b>>16;
+	c->reg[CSR_O_SC_C/2+1]=b;
+	b=scsi_get_pointer(c->scsi);
+	c->reg[CSR_O_SC_P/2]=b>>16;
+	c->reg[CSR_O_SC_P/2+1]=b;
+
 	unsigned int ret=c->reg[a/2];
 	if (a==CSR_O_KILL) {
 		//note: return 0x80 if we are the job cpu
@@ -130,6 +147,10 @@ unsigned int csr_read16(void *obj, unsigned int a) {
 	}
 //	printf("csr read16 0x%X -> 0x%X\n", a, ret);
 	return ret;
+}
+
+unsigned int csr_read32(void *obj, unsigned int a) {
+	return (csr_read16(obj, a)<<16)+csr_read16(obj, a+2);
 }
 
 unsigned int csr_read8(void *obj, unsigned int a) {
