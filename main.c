@@ -408,7 +408,7 @@ void emu_raise_int(uint8_t vector, uint8_t level, int cpu) {
 //	printf("Interrupt raised: %x\n", vector);
 	vectors[cpu][vector]=level;
 	need_raise_highest_int[cpu]=1;
-	do_tracefile=1;
+//	do_tracefile=1;
 }
 
 
