@@ -89,7 +89,7 @@
  * If off, all interrupts will be autovectored and all interrupt requests will
  * auto-clear when the interrupt is serviced.
  */
-#define M68K_EMULATE_INT_ACK        OPT_OFF
+#define M68K_EMULATE_INT_ACK        OPT_ON
 #define M68K_INT_ACK_CALLBACK(A)    your_int_ack_handler_function(A)
 
 
@@ -147,7 +147,7 @@
  * want to properly emulate the m68010 or higher. (moves uses function codes
  * to read/write data from different address spaces)
  */
-#define M68K_EMULATE_FC             OPT_OFF
+#define M68K_EMULATE_FC             OPT_ON
 #define M68K_SET_FC_CALLBACK(A)     your_set_fc_handler_function(A)
 
 /* If ON, CPU will call the pc changed callback when it changes the PC by a
@@ -161,7 +161,7 @@
 /* If ON, CPU will call the instruction hook callback before every
  * instruction.
  */
-#define M68K_INSTRUCTION_HOOK       OPT_OFF
+#define M68K_INSTRUCTION_HOOK       OPT_ON
 #define M68K_INSTRUCTION_CALLBACK(pc) your_instruction_hook_function(pc)
 
 
