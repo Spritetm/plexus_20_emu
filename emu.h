@@ -8,5 +8,5 @@ void emu_enable_mapper(int do_enable);
 
 
 int emu_read_byte(int addr);
-int emu_write_byte(int addr, int val);
+void emu_write_byte(int addr, int val);
 

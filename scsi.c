@@ -13,6 +13,7 @@ struct scsi_t {
 	int byte_stashed;
 	int diag;
 	int last_req_reg;
+	int ptr_read_msb;
 };
 
 
@@ -64,6 +65,7 @@ void scsi_set_bytecount(scsi_t *s, int bytecount) {
 void scsi_set_pointer(scsi_t *s, int pointer) {
 	printf("SCSI: Pointer 0x%X\n", pointer);
 	s->pointer=pointer;
+	s->ptr_read_msb=(pointer&1);
 }
 
 int scsi_get_bytecount(scsi_t *s) {
@@ -174,36 +176,46 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 			} else {
 				if (flag&O_SCSIIO) {
 					//re-use what's already on the bus... I think? (Is that what diag latch does?)
-					int old=emu_read_byte(s->pointer);
 					if (s->bytecount>0) {
-						if (s->pointer&1) {
+						if (s->ptr_read_msb) {
+							s->pointer&=~1;
+							s->ptr_read_msb=0;
 							if (val&O_SRAM) {
 								//Unsure. 8bit writes into 16bit words?
 								printf("Warning: SRAM writes are a guess...\n");
-								emu_write_byte(s->pointer-1, 0);
-								emu_write_byte(s->pointer, s->byte_stashed);
-								emu_write_byte(s->pointer+1, 0);
-								emu_write_byte(s->pointer+2, s->buf[3]);
-								s->pointer+=2;
+								emu_write_byte(s->pointer, 0);
+								emu_write_byte(s->pointer+1, s->byte_stashed);
+								emu_write_byte(s->pointer+2, 0);
+								emu_write_byte(s->pointer+3, s->buf[3]);
+								s->pointer+=4;
 							} else {
-								emu_write_byte(s->pointer-1, s->byte_stashed);
-								emu_write_byte(s->pointer, s->buf[3]);
+								emu_write_byte(s->pointer, s->byte_stashed);
+								emu_write_byte(s->pointer+1, s->buf[3]);
+								s->pointer+=2;
 							}
 						} else {
 							s->byte_stashed=s->buf[3];
+							s->ptr_read_msb=1;
 						}
-						s->pointer++;
 					}
 					val|=I_ACK;
 					if (s->diag & SCSI_DIAG_PARITY) {
 						emu_raise_int(INTVECT_PARITY, LEVEL, 0);
 					}
 				} else {
-					s->buf[3]=emu_read_byte(s->pointer);
+					s->buf[3]=emu_read_byte(s->pointer+s->ptr_read_msb);
 					printf("Read %x from main memory adr %x\n", s->buf[3], s->pointer);
 					//I have no idea what the 3 should come from, but that's the value the diagnostics want.
 					if (s->diag & SCSI_DIAG_LATCH) s->buf[3]=3;
-					if (s->bytecount>=0) s->pointer++;
+					if (s->bytecount>=0) {
+						if (s->ptr_read_msb) {
+							s->pointer&=~1;
+							s->ptr_read_msb=0;
+							s->pointer+=2;
+						} else {
+							s->ptr_read_msb=1;
+						}
+					}
 					val|=I_ACK;
 					if (s->diag & SCSI_DIAG_PARITY) {
 						emu_raise_int(INTVECT_PARITY, LEVEL, 0);

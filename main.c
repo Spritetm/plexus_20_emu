@@ -10,6 +10,7 @@
 #include "mapper.h"
 #include "scsi.h"
 #include "mbus.h"
+#include "rtc.h"
 
 typedef struct mem_range_t mem_range_t;
 
@@ -149,7 +150,7 @@ unsigned int m68k_read_memory_32(unsigned int address) {
 		return 0xdeadbeef;
 	}
 	if (!m->read32) {
-		printf("No read32/read8 implemented for '%s', addr 0x%08X\n", m->name, address);
+		printf("No read32 implemented for '%s', addr 0x%08X\n", m->name, address);
 		dump_cpu_state();
 		return 0xdeadbeef;
 	}
@@ -166,7 +167,7 @@ unsigned int m68k_read_memory_16(unsigned int address) {
 		return 0xbeef;
 	}
 	if (!m->read16) {
-		printf("No read16/read8 implemented for '%s', addr 0x%08X\n", m->name, address);
+		printf("No read16 implemented for '%s', addr 0x%08X\n", m->name, address);
 		dump_cpu_state();
 		return 0xbeef;
 	}
@@ -248,7 +249,7 @@ int emu_read_byte(int addr) {
 	return m68k_read_memory_8(addr);
 }
 
-int emu_write_byte(int addr, int val) {
+void emu_write_byte(int addr, int val) {
 	m68k_write_memory_8(addr, val);
 }
 
@@ -275,6 +276,17 @@ void setup_scsi(const char *name) {
 	m->write16=scsi_write16;
 	m->read16=scsi_read16;
 	m->read8=scsi_read8;
+}
+
+rtc_t *setup_rtc(const char *name) {
+	mem_range_t *m=find_range_by_name(name);
+	rtc_t *r=rtc_new();
+	m->obj=r;
+	m->write8=rtc_write8;
+	m->write16=rtc_write16;
+	m->read8=rtc_read8;
+	m->read16=rtc_read16;
+	return r;
 }
 
 csr_t *setup_csr(const char *name, const char *mmio_name, const char *scsi_name) {
@@ -446,8 +458,9 @@ int main(int argc, char **argv) {
 	setup_scsi("SCSIBUF");
 	csr_t *csr=setup_csr("CSR", "MMIO_WR", "SCSIBUF");
 	mapper=setup_mapper("MAPPER", "MAPRAM", "RAM");
-	setup_nop("MBUSIO");
+//	setup_nop("MBUSIO");
 	setup_mbus("MBUSMEM");
+	rtc_t *rtc=setup_rtc("RTC");
 
 	//set up ROM shadow for boot
 	//technically, there's a bit in the CSR that forces bit 23 of the address high
@@ -506,6 +519,7 @@ int main(int argc, char **argv) {
 		//ints go to job cpu
 		m68k_set_context(cpuctx[0]);
 		for (int i=0; i<4; i++) uart_tick(uart[i], 10);
+		rtc_tick(rtc, 10);
 		m68k_get_context(cpuctx[0]);
 	}
 	return 0;
