@@ -32,6 +32,7 @@ int insn_id=0;
 
 int cur_cpu;
 
+mapper_t *mapper;
 
 int32_t callstack[2][8192];
 int callstack_ptr[2]={0};
@@ -250,15 +251,24 @@ void m68k_write_memory_32(unsigned int address, unsigned int value) {
 	m->write32(m->obj, address - m->offset, value);
 }
 
-
-//Used for SCSI DMA transfers
-//ToDo: do these go through the mapper?
+//Used for SCSI DMA transfers as well as mbus transfers.
 int emu_read_byte(int addr) {
+	int access_flags=ACCESS_R|ACCESS_SYSTEM;
+	if (!mapper_access_allowed(mapper, addr, access_flags)) return -1;
 	return m68k_read_memory_8(addr);
 }
 
-void emu_write_byte(int addr, int val) {
+int emu_write_byte(int addr, int val) {
+	int access_flags=ACCESS_R|ACCESS_SYSTEM;
+	if (!mapper_access_allowed(mapper, addr, access_flags)) return 0;
 	m68k_write_memory_8(addr, val);
+	return -1;
+}
+
+void emu_mbus_error(unsigned int addr) {
+	mem_range_t *r=find_range_by_name("CSR");
+	csr_t *c=(csr_t*)r->obj;
+	csr_raise_error(c, CSR_ERR_MBUS, addr);
 }
 
 uart_t *setup_uart(const char *name, int is_console) {
@@ -366,6 +376,8 @@ void setup_mbus(const char *name) {
 	m->write32=mbus_write32;
 }
 
+
+//1 if held
 int emu_try_mbus_held() {
 	mem_range_t *r=find_range_by_name("CSR");
 	csr_t *c=(csr_t*)r->obj;
@@ -382,7 +394,6 @@ void setup_nop(const char *name) {
 	m->read32=nop_read;
 }
 
-mapper_t *mapper;
 
 void m68k_fc_cb(unsigned int fc) {
 	mapper_set_sysmode(mapper, fc&4);

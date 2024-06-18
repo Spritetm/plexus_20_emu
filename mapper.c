@@ -11,6 +11,7 @@
 #define MAPPER_LOG(msg_level, format_and_args...) \
 	log_printf(LOG_SRC_MAPPER, msg_level, format_and_args)
 #define MAPPER_LOG_DEBUG(format_and_args...) MAPPER_LOG(LOG_DEBUG, format_and_args)
+#define MAPPER_LOG_INFO(format_and_args...) MAPPER_LOG(LOG_DEBUG, format_and_args)
 
 /*
 On the MMU:
@@ -56,7 +57,7 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags)
 	unsigned int ac=(m->desc[page].w1<<16)+m->desc[page].w0;
 	int fault=(ac&access_flags)&(ACCESS_R|ACCESS_W|ACCESS_X);
 	//todo: also check uid
-//	if (fault) printf("Mapper: Access fault at page addr %x, fault %x\n", page<<12, fault);
+	if (fault) MAPPER_LOG_DEBUG("Mapper: Access fault at page addr %x, fault %x\n", page<<12, fault);
 	return !fault;
 }
 
@@ -66,7 +67,7 @@ int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags) {
 	//Map virtual page to phyical page.
 	int p=a>>12; //4K pages
 	if (p>=2048) {
-		printf("mapper_access_allowed: out of range addr %x\n", a);
+		MAPPER_LOG_INFO("mapper_access_allowed: out of range addr %x\n", a);
 		exit(1);
 	}
 	if (access_flags&ACCESS_SYSTEM) p+=2048;

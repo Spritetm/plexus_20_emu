@@ -10,6 +10,7 @@
 #define MBUS_LOG(msg_level, format_and_args...) \
 	log_printf(LOG_SRC_MBUS, msg_level, format_and_args)
 #define MBUS_LOG_DEBUG(format_and_args...) MBUS_LOG(LOG_DEBUG, format_and_args)
+#define MBUS_LOG_INFO(format_and_args...) MBUS_LOG(LOG_INFO, format_and_args)
 
 /*
 Mbus is an 16-bit Intel bus so LE. M68K is BE. If you write words through 
@@ -19,22 +20,38 @@ but they obvs can't do that for 8-bit writes/reads. So 16-bit writes go through
 transparently, but a write/read to 8-bit address x happens to x^1 :X
 */
 
+
 static int mbus_held() {
 	if (!emu_try_mbus_held()) return 0;
 	MBUS_LOG_DEBUG("Blocking op: bus held\n");
 	return 1;
 }
 
+static int on_wrong_cpu(int addr) {
+	int r=emu_get_cur_cpu();
+	if (r==1) return 0;
+	MBUS_LOG_DEBUG("Mbus access to %x from wrong CPU\n", addr);
+	return 1;
+}
+
 void mbus_write8(void *obj, unsigned int a, unsigned int val) {
+	if (on_wrong_cpu(a)) return;
 	MBUS_LOG_DEBUG("MBUS: w %x->%x %x\n", a, a+0x780000, val);
-	if (mbus_held()) return;
+	if (mbus_held()) {
+		MBUS_LOG_DEBUG("MBUS: ^^ write held.\n");
+		return;
+	}
 	int r=emu_write_byte((a+0x780000)^1, val);
 	if (!r) emu_mbus_error(a);
 }
 
 void mbus_write16(void *obj, unsigned int a, unsigned int val) {
+	if (on_wrong_cpu(a)) return;
 	MBUS_LOG_DEBUG("MBUS: w %x->%x %x\n", a, a+0x780000, val);
-	if (mbus_held()) return;
+	if (mbus_held()) {
+		MBUS_LOG_DEBUG("MBUS: ^^ write held.\n");
+		return;
+	}
 	int r=emu_write_byte((a+0x780000), val>>8);
 	r&=emu_write_byte((a+0x780001), val);
 	if (!r) emu_mbus_error(a);
@@ -46,7 +63,11 @@ void mbus_write32(void *obj, unsigned int a, unsigned int val) {
 }
 
 unsigned int mbus_read8(void *obj, unsigned int a) {
-	if (mbus_held()) return 0;
+	if (on_wrong_cpu(a)) return 0;
+	if (mbus_held()) {
+		MBUS_LOG_DEBUG("MBUS: Held read 0x%X\n", a);
+		return 0;
+	}
 	int r=emu_read_byte((a+0x780000)^1);
 	if (r==-1) {
 		emu_mbus_error(a|EMU_MBUS_ERROR_READ);
@@ -56,7 +77,11 @@ unsigned int mbus_read8(void *obj, unsigned int a) {
 }
 
 unsigned int mbus_read16(void *obj, unsigned int a) {
-	if (mbus_held()) return 0;
+	if (on_wrong_cpu(a)) return 0;
+	if (mbus_held()) {
+		MBUS_LOG_DEBUG("MBUS: Held read 0x%X\n", a);
+		return 0;
+	}
 	int r1=emu_read_byte((a+0x780000));
 	int r2=emu_read_byte((a+0x780001));
 	if (r1==-1 || r2==-1) {
