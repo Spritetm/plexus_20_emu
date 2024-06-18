@@ -27,6 +27,10 @@ uart_t *uart_new(const char *name, int is_console) {
 	return u;
 }
 
+void uart_console_printc(char val) {
+	printf("%c", val);
+}
+
 #define REG_CMD 0
 #define REG_MODECTL 1
 #define REG_INTCTL 2
@@ -64,7 +68,7 @@ void uart_write8(void *obj, unsigned int addr, unsigned int val) {
 			u->chan[chan].ticks_to_loopback=80;
 //			printf("uart %s chan %s: send loopback char 0x%X\n", u->name, chan?"B":"A", val);
 		} else {
-			if (u->is_console) printf("%c", val);
+			if (u->is_console) uart_console_printc(val);
 		}
 	} else if (a==10) {
 //		printf("uart %s chan %s: time const reg 0x%X\n", u->name, chan?"B":"A", val);
