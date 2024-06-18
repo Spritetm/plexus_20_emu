@@ -4,9 +4,11 @@
 
 // Default log levels for log sources
 #define LOG_UART_DEFAULT_LEVEL LOG_ERR
+#define LOG_CSR_DEFAULT_LEVEL  LOG_ERR
 
 int log_channel_verbose_level[] = {
-	LOG_UART_DEFAULT_LEVEL
+	LOG_UART_DEFAULT_LEVEL,
+	LOG_CSR_DEFAULT_LEVEL
 };
 
 int log_printf(enum log_source source, int msg_level, const char *format, ...) {

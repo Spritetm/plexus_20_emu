@@ -3,7 +3,13 @@
 #include <stdio.h>
 #include "csr.h"
 #include "emu.h"
+#include "log.h"
 #include "scsi.h"
+
+// Debug logging
+#define CSR_LOG(msg_level, format_and_args...) \
+        log_printf(LOG_SRC_CSR, msg_level, format_and_args)
+#define CSR_LOG_DEBUG(format_and_args...) CSR_LOG(LOG_DEBUG, format_and_args)
 
 //csr: usr/include/sys/mtpr.h, note we're Robin
 
@@ -88,7 +94,7 @@ int csr_cpu_is_reset(csr_t *csr, int cpu) {
 void csr_write16(void *obj, unsigned int a, unsigned int val) {
 	csr_t *c=(csr_t*)obj;
 	if (a==CSR_O_RSEL) {
-//		printf("csr write16 %x (reset sel) val %x\n", a, val);
+		CSR_LOG_DEBUG("csr write16 %x (reset sel) val %x\n", a, val);
 	} else if (a==CSR_O_SC_C || a==CSR_O_SC_C+2) {
 		c->reg[a/2]=val;
 		scsi_set_bytecount(c->scsi, ((c->reg[CSR_O_SC_C/2]<<16)+c->reg[CSR_O_SC_C/2+1])&0xffffff);
@@ -104,10 +110,10 @@ void csr_write16(void *obj, unsigned int a, unsigned int val) {
 		if ((val&MISC_DIAGPESC)) v|=SCSI_DIAG_PARITY;
 		scsi_set_diag(c->scsi, v);
 	} else if (a==CSR_O_KILL) { //kill
-//		printf("csr write16 %x (kill) val %x\n", a, val);
+		CSR_LOG_DEBUG("csr write16 %x (kill) val %x\n", a, val);
 		val&=0x3; //rest is set elsewhere
 	} else {
-//		printf("csr write16 %x val %x\n", a, val);
+		CSR_LOG_DEBUG("csr write16 %x val %x\n", a, val);
 	}
 	c->reg[a/2]=val;
 }
@@ -119,7 +125,7 @@ void csr_write32(void *obj, unsigned int a, unsigned int val) {
 
 
 void csr_write8(void *obj, unsigned int a, unsigned int val) {
-//	printf("csr write8 %x val %x\n", a, val);
+	CSR_LOG_DEBUG("csr write8 %x val %x\n", a, val);
 	//fake with a csr write16
 	if (a&1) {
 		csr_write16(obj, a-1, val);
@@ -145,7 +151,7 @@ unsigned int csr_read16(void *obj, unsigned int a) {
 	} else if (a==CSR_O_SC_R) {
 		return scsi_get_scsireg(c->scsi);
 	}
-//	printf("csr read16 0x%X -> 0x%X\n", a, ret);
+	CSR_LOG_DEBUG("csr read16 0x%X -> 0x%X\n", a, ret);
 	return ret;
 }
 
@@ -171,23 +177,23 @@ void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 	//so we adjust the address here.
 	a=a+0x20;
 	if (a==RESET_CLR_JOBINT) {
-//		printf("CSR: Clear job int\n");
+		CSR_LOG_DEBUG("CSR: Clear job int\n");
 		c->reg[CSR_O_KILL/2] &= ~KILL_INT_JOB;
 		emu_raise_int(INTVECT_JOB, 0, 1);
 	} else if (a==RESET_SET_JOBINT) {
-//		printf("CSR: Set job int\n");
+		CSR_LOG_DEBUG("CSR: Set job int\n");
 		c->reg[CSR_O_KILL/2] |= KILL_INT_JOB;
 		emu_raise_int(INTVECT_JOB, 4, 1);
 	} else if (a==RESET_CLR_DMAINT) {
-//		printf("CSR: Clear dma int\n");
+		CSR_LOG_DEBUG("CSR: Clear dma int\n");
 		c->reg[CSR_O_KILL/2] &= ~KILL_INT_DMA;
 		emu_raise_int(INTVECT_DMA, 0, 0);
 	} else if (a==RESET_SET_DMAINT) {
-//		printf("CSR: Set dma int\n");
+		CSR_LOG_DEBUG("CSR: Set dma int\n");
 		c->reg[CSR_O_KILL/2] |= KILL_INT_DMA;
 		emu_raise_int(INTVECT_DMA, 2, 0);
 	} else {
-//		printf("Unhandled MMIO write 0x%x\n", a);
+		CSR_LOG_DEBUG("Unhandled MMIO write 0x%x\n", a);
 	}
 }
 
