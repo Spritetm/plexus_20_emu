@@ -7,9 +7,9 @@
 #include "log.h"
 
 // Debug logging
-#define UART_LOG(msg_level, format, args...) \
-	log_printf(LOG_SRC_UART, msg_level, format, args)
-#define UART_LOG_DEBUG(format, args...) UART_LOG(LOG_DEBUG, format, args)
+#define UART_LOG(msg_level, format_and_args...) \
+	log_printf(LOG_SRC_UART, msg_level, format_and_args)
+#define UART_LOG_DEBUG(format_and_args...) UART_LOG(LOG_DEBUG, format_and_args)
 
 //The UARTs are Mostek MK68564 chips.
 
