@@ -3,8 +3,12 @@
 
 // Log sources (should be numbered sequentially from 0)
 enum log_source {
-	LOG_SRC_UART = 0,
-	LOG_SRC_CSR  = 1
+	LOG_SRC_UART   = 0,
+	LOG_SRC_CSR    = 1,
+	LOG_SRC_MBUS   = 2,
+	LOG_SRC_MAPPER = 3,
+	LOG_SRC_SCSI   = 4,
+	LOG_SRC_EMU    = 5
 };
 
 
