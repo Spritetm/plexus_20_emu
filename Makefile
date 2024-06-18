@@ -19,4 +19,4 @@ clean:
 	rm -f emu
 	rm -f Musashi/m68kops.h
 
--include $(SRC_ALL:.c=.d)
+-include $(SRC:.c=.d)
