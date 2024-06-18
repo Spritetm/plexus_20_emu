@@ -1,6 +1,13 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "log.h"
+
+// Debug logging
+#define RAMROM_LOG(msg_level, format_and_args...) \
+	log_printf(LOG_SRC_RAMROM, msg_level, format_and_args)
+#define RAMROM_LOG_DEBUG(format_and_args...)   RAMROM_LOG(LOG_DEBUG,   format_and_args)
+#define RAMROM_LOG_WARNING(format_and_args...) RAMROM_LOG(LOG_WARNING, format_and_args)
 
 void ram_write8(void *obj, unsigned int a, unsigned int val) {
 	uint8_t *buffer=(uint8_t*)obj;
@@ -46,7 +53,7 @@ void *rom_new(const char *filename, int size) {
 	int r=fread(buf, 1, size, f);
 	fclose(f);
 	if (r!=size) {
-		printf("%s: short read: %d bytes for rom region of %d bytes\n", filename, r, size);
+		RAMROM_LOG_WARNING("%s: short read: %d bytes for rom region of %d bytes\n", filename, r, size);
 	}
 	return buf;
 }

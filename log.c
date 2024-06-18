@@ -10,7 +10,7 @@
 #define LOG_SCSI_DEFAULT_LEVEL   LOG_INFO
 #define LOG_EMU_DEFAULT_LEVEL    LOG_INFO
 #define LOG_RAMROM_DEFAULT_LEVEL LOG_INFO
-#define LOG_RTC_DEFAULT_LEVEL    LOG_INFO
+#define LOG_RTC_DEFAULT_LEVEL    LOG_DEBUG
 #define LOG_EMU_DEFAULT_LEVEL    LOG_INFO
 
 // These must be in the same order as enum log_source (in log.h)
