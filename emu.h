@@ -12,7 +12,7 @@ int emu_read_byte(int addr);
 void emu_write_byte(int addr, int val);
 
 void emu_raise_rtc_int();
-
+int emu_try_mbus_held();
 
 typedef struct {
 	const char *u15_rom;

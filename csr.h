@@ -13,3 +13,5 @@ csr_t *csr_new(scsi_t *scsi);
 
 int csr_cpu_is_reset(csr_t *csr, int cpu);
 int csr_get_rtc_int_ena(csr_t *csr, int cpu);
+int csr_try_mbus_held(csr_t *csr);
+

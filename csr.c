@@ -100,6 +100,15 @@ int csr_get_rtc_int_ena(csr_t *csr, int cpu) {
 	}
 }
 
+int csr_try_mbus_held(csr_t *csr) {
+	//Note - unlike everything the docs say, this seem to be active low.
+	if ((csr->reg[CSR_O_MISC]&MISC_HOLDMBUS)==0) {
+		csr->reg[CSR_O_MISC]|=MISC_TBUSY;
+		return 0;
+	}
+	return 1;
+}
+
 void csr_write16(void *obj, unsigned int a, unsigned int val) {
 	csr_t *c=(csr_t*)obj;
 	if (a==CSR_O_RSEL) {
@@ -201,6 +210,8 @@ void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 		CSR_LOG_DEBUG("CSR: Set dma int\n");
 		c->reg[CSR_O_KILL/2] |= KILL_INT_DMA;
 		emu_raise_int(INTVECT_DMA, 2, 0);
+	} else if (a==RESET_MULTERR) {
+		c->reg[CSR_O_MISC]&=~MISC_TBUSY;
 	} else {
 		CSR_LOG_DEBUG("Unhandled MMIO write 0x%x\n", a);
 	}

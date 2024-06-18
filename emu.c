@@ -366,6 +366,12 @@ void setup_mbus(const char *name) {
 	m->write32=mbus_write32;
 }
 
+int emu_try_mbus_held() {
+	mem_range_t *r=find_range_by_name("CSR");
+	csr_t *c=(csr_t*)r->obj;
+	return csr_try_mbus_held(c);
+}
+
 void setup_nop(const char *name) {
 	mem_range_t *m=find_range_by_name(name);
 	m->write8=nop_write;
