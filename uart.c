@@ -4,6 +4,12 @@
 #include <string.h>
 #include "uart.h"
 #include "emu.h"
+#include "log.h"
+
+// Debug logging
+#define UART_LOG(msg_level, format, args...) \
+	log_printf(LOG_SRC_UART, msg_level, format, args)
+#define UART_LOG_DEBUG(format, args...) UART_LOG(LOG_DEBUG, format, args)
 
 //The UARTs are Mostek MK68564 chips.
 
@@ -51,31 +57,31 @@ void uart_write8(void *obj, unsigned int addr, unsigned int val) {
 	int chan=(addr>>4)&1;
 	int a=(addr&0xf);
 	if (a==0) {
-//		printf("uart %s chan %s: cmd 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: cmd 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==1) {
-//		printf("uart %s chan %s: mode 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: mode 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==2) {
-//		printf("uart %s chan %s: int ctl 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: int ctl 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==5) {
-//		printf("uart %s chan %s: rcv ctl 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: rcv ctl 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==6) {
-//		printf("uart %s chan %s: tx ctl 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: tx ctl 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==9) {
-//		printf("uart %s chan %s: data reg 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: data reg 0x%X\n", u->name, chan?"B":"A", val);
 		if (u->chan[chan].regs[0]&1) { //loop mode
 			u->chan[chan].has_char_rcv=1;
 			u->chan[chan].char_rcv=val;
 			u->chan[chan].ticks_to_loopback=80;
-//			printf("uart %s chan %s: send loopback char 0x%X\n", u->name, chan?"B":"A", val);
+			UART_LOG_DEBUG("uart %s chan %s: send loopback char 0x%X\n", u->name, chan?"B":"A", val);
 		} else {
 			if (u->is_console) uart_console_printc(val);
 		}
 	} else if (a==10) {
-//		printf("uart %s chan %s: time const reg 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: time const reg 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==11) {
-//		printf("uart %s chan %s: baud rate gen 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: baud rate gen 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==12) {
-//		printf("uart %s chan %s: vector ctl 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: vector ctl 0x%X\n", u->name, chan?"B":"A", val);
 	}
 	u->chan[chan].regs[a]=val;
 }
@@ -90,7 +96,7 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 		int r=0;
 		if (u->chan[chan].ticks_to_loopback==0) r|=0x4;
 		if (u->chan[chan].has_char_rcv && u->chan[chan].ticks_to_loopback==0) r|=0x3;
-//		printf("uart %s chan %s: read8 status0 -> %x\n", u->name, chan?"B":"A", addr, r);
+		UART_LOG_DEBUG("uart %s chan %s: read8 status0 -> %x\n", u->name, chan?"B":"A", addr, r);
 		return r;
 	} else if (a==8) {
 		//D7-0: eof, crc err, rx overrun, parity err, res c2, res c1, res c0, all sent
@@ -101,15 +107,15 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 		int r=0x41;
 		if (u->chan[chan].char_rcv==0x3E) r=0x11;
 
-//		printf("uart %s chan %s: read8 status1 -> %x\n", u->name, chan?"B":"A", addr, r);
+		UART_LOG_DEBUG("uart %s chan %s: read8 status1 -> %x\n", u->name, chan?"B":"A", addr, r);
 		return r;
 	} else if (a==9) {
-//		printf("read char %x\n", u->chan[chan].char_rcv);
+		UART_LOG_DEBUG("read char %x\n", u->chan[chan].char_rcv);
 		u->chan[chan].has_char_rcv=0;
 		return u->chan[chan].char_rcv;
 	}
 	
-//	printf("uart %s chan %s: read8 %x -> %x\n", u->name, chan?"B":"A", addr, u->chan[chan].regs[addr]);
+	UART_LOG_DEBUG("uart %s chan %s: read8 %x -> %x\n", u->name, chan?"B":"A", addr, u->chan[chan].regs[addr]);
 	return u->chan[chan].regs[a];
 }
 
