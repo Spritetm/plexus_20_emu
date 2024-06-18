@@ -3,7 +3,13 @@
 #include <stdio.h>
 #include <time.h>
 #include "emu.h"
+#include "log.h"
 #include "rtc.h"
+
+// Debug logging
+#define RTC_LOG(msg_level, format_and_args...) \
+	log_printf(LOG_SRC_RTC, msg_level, format_and_args)
+#define RTC_LOG_DEBUG(format_and_args...) RTC_LOG(LOG_DEBUG, format_and_args)
 
 #define	CALSECS		0x00
 #define CALSECALARM	0x01
@@ -45,9 +51,9 @@ void rtc_write8(void *obj, unsigned int a, unsigned int val) {
 	}
 	if (a==CALREGA) {
 		val&=0x7F; //no update in progress
-		printf("RTC: set A to 0x%02X\n", val);
+		RTC_LOG_DEBUG("RTC: set A to 0x%02X\n", val);
 	} else if (a==CALREGB) {
-		printf("RTC: set B to 0x%02X\n", val);
+		RTC_LOG_DEBUG("RTC: set B to 0x%02X\n", val);
 	}
 	r->reg[a]=val;
 }
