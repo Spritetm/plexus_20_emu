@@ -91,6 +91,15 @@ int csr_cpu_is_reset(csr_t *csr, int cpu) {
 	return r;
 }
 
+int csr_get_rtc_int_ena(csr_t *csr, int cpu) {
+	//Note - unlike everything the docs say, these seem to be active low.
+	if (cpu==0) {
+		return !(csr->reg[CSR_O_MISC]&MISC_CINTDEN);
+	} else {
+		return !(csr->reg[CSR_O_MISC]&MISC_CINTJEN);
+	}
+}
+
 void csr_write16(void *obj, unsigned int a, unsigned int val) {
 	csr_t *c=(csr_t*)obj;
 	if (a==CSR_O_RSEL) {

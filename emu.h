@@ -10,3 +10,4 @@ void emu_enable_mapper(int do_enable);
 int emu_read_byte(int addr);
 void emu_write_byte(int addr, int val);
 
+void emu_raise_rtc_int();

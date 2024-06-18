@@ -418,7 +418,12 @@ void emu_raise_int(uint8_t vector, uint8_t level, int cpu) {
 //	do_tracefile=1;
 }
 
-
+void emu_raise_rtc_int() {
+	mem_range_t *r=find_range_by_name("CSR");
+	csr_t *c=(csr_t*)r->obj;
+	if (csr_get_rtc_int_ena(c, 0)) emu_raise_int(0x83, 6, 0);
+	if (csr_get_rtc_int_ena(c, 1)) emu_raise_int(0x83, 6, 1);
+}
 
 void m68k_trace_cb(unsigned int pc) {
 	insn_id++;
@@ -504,6 +509,7 @@ int main(int argc, char **argv) {
 	m68k_get_context(cpuctx[0]);
 
 	int cpu_in_reset[2]={0};
+	int cycles_remaining[2]={0};
 
 	while(1) {
 		for (int i=0; i<2; i++) {
@@ -518,7 +524,8 @@ int main(int argc, char **argv) {
 			} else {
 				if (cpu_in_reset[i]) m68k_pulse_reset();
 				cpu_in_reset[i]=0;
-				m68k_execute(100);
+				m68k_execute(100+cycles_remaining[i]);
+				cycles_remaining[i]=m68k_cycles_remaining();
 			}
 			m68k_get_context(cpuctx[i]);
 		}
