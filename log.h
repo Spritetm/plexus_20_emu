@@ -13,12 +13,14 @@ enum log_source {
 
 
 // Emulator log levels (higher is more verbose)
-#define LOG_ERR        0
-#define LOG_WARNING    1
-#define LOG_NOTICE     2
-#define LOG_INFO       3
-#define LOG_DEBUG      4
+enum log_level {
+	LOG_ERR        = 0,
+	LOG_WARNING    = 1,
+	LOG_NOTICE     = 2,
+	LOG_INFO       = 3,
+	LOG_DEBUG      = 4
+};
 
-int log_printf(enum log_source source, int msg_level, const char *format, ...);
+int log_printf(enum log_source source, enum log_level msg_level, const char *format, ...);
 
 #endif

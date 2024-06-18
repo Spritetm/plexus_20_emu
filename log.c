@@ -19,7 +19,7 @@ int log_channel_verbose_level[] = {
 	LOG_EMU_DEFAULT_LEVEL
 };
 
-int log_printf(enum log_source source, int msg_level, const char *format, ...) {
+int log_printf(enum log_source source, enum log_level msg_level, const char *format, ...) {
         va_list ap;
         int printed = 0;
 
