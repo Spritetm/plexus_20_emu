@@ -1,3 +1,4 @@
 emu
 *.o
 *.d
+trace.txt
