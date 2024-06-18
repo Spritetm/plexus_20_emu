@@ -3,6 +3,14 @@
 #include <stdio.h>
 #include "scsi.h"
 #include "emu.h"
+#include "log.h"
+
+// Debug logging
+#define SCSI_LOG(msg_level, format_and_args...) \
+	log_printf(LOG_SRC_SCSI, msg_level, format_and_args)
+#define SCSI_LOG_DEBUG(format_and_args...)  SCSI_LOG(LOG_DEBUG,  format_and_args)
+#define SCSI_LOG_INFO(format_and_args...)   SCSI_LOG(LOG_INFO,   format_and_args)
+#define SCSI_LOG_NOTICE(format_and_args...) SCSI_LOG(LOG_NOTICE, format_and_args)
 
 struct scsi_t {
 	uint8_t buf[4];
@@ -49,12 +57,12 @@ unsigned int scsi_read8(void *obj, unsigned int a) {
 
 
 void scsi_set_bytecount(scsi_t *s, int bytecount) {
-//	printf("SCSI: Bytecount 0x%X\n", bytecount);
+	SCSI_LOG_DEBUG("SCSI: Bytecount 0x%X\n", bytecount);
 	s->bytecount=bytecount;
 }
 
 void scsi_set_pointer(scsi_t *s, int pointer) {
-//	printf("SCSI: Pointer 0x%X\n", pointer);
+	SCSI_LOG_DEBUG("SCSI: Pointer 0x%X\n", pointer);
 	s->pointer=pointer;
 	s->ptr_read_msb=(pointer&1);
 }
@@ -131,11 +139,11 @@ const char *bit_str[]={
 
 void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 #if 0
-	printf("SCSI: reg ");
+	SCSI_LOG_DEBUG("SCSI: reg ");
 	for (int i=0; i<16; i++) {
-		if (val&(1<<(15-i))) printf("%s ", bit_str[i]);
+		if (val&(1<<(15-i))) SCSI_LOG_DEBUG("%s ", bit_str[i]);
 	}
-	printf("\n");
+	SCSI_LOG_DEBUG("\n");
 #endif
 	if (val&O_SCSIRST) {
 		//Note: SCSI RESET makes all other signals on the bus undefined and
@@ -147,8 +155,8 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 			emu_raise_int(INTVECT_SELECTI, LEVEL, 0);
 		}
 		if (val&O_SCSIREQ) {
-//			if (s->diag&SCSI_DIAG_LATCH) printf("Diag latch on!\n");
-//			if (s->diag&SCSI_DIAG_PARITY) printf("Fake parity error on!\n");
+			if (s->diag&SCSI_DIAG_LATCH) SCSI_LOG_DEBUG("Diag latch on!\n");
+			if (s->diag&SCSI_DIAG_PARITY) SCSI_LOG_DEBUG("Fake parity error on!\n");
 			//Check flags
 			int flag=val&(O_SCSIIO|O_SCSICD|O_SCSIMSG);
 			int wanted_flags=0;
@@ -163,7 +171,7 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 				if ((flag&O_SCSIMSG)==0) v|=0x4;
 				if ((flag&O_SCSICD)==0) v|=0x2;
 				if ((flag&O_SCSIIO)==0) v|=0x1;
-//				printf("SCSI: Pointer exception 0x%X. Raising interrupt.\n", flag);
+				SCSI_LOG_DEBUG("SCSI: Pointer exception 0x%X. Raising interrupt.\n", flag);
 				emu_raise_int(v, LEVEL, 0);
 				val&=~O_AUTOXFR; //so we start without an error next time
 			} else {
@@ -175,7 +183,7 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 							s->ptr_read_msb=0;
 							if (val&O_SRAM) {
 								//Unsure. 8bit writes into 16bit words?
-								printf("SCSI: Warning: SRAM writes are a guess...\n");
+								SCSI_LOG_NOTICE("SCSI: Warning: SRAM writes are a guess...\n");
 								emu_write_byte(s->pointer, 0);
 								emu_write_byte(s->pointer+1, s->byte_stashed);
 								emu_write_byte(s->pointer+2, 0);
@@ -197,7 +205,7 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 					}
 				} else {
 					s->buf[3]=emu_read_byte(s->pointer+s->ptr_read_msb);
-//					printf("Read %x from main memory adr %x\n", s->buf[3], s->pointer);
+					SCSI_LOG_DEBUG("Read %x from main memory adr %x\n", s->buf[3], s->pointer);
 					//I have no idea what the 3 should come from, but that's the value the diagnostics want.
 					if (s->diag & SCSI_DIAG_LATCH) s->buf[3]=3;
 					if (s->bytecount>=0) {
@@ -217,7 +225,7 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 				s->last_req_reg=val;
 			}
 			if (s->bytecount>0) s->bytecount--;
-//			printf("After read/write: Bytecnt %x ptr %x\n", s->bytecount, s->pointer);
+			SCSI_LOG_DEBUG("After read/write: Bytecnt %x ptr %x\n", s->bytecount, s->pointer);
 		} else {
 			val&=~I_ACK;
 		}
