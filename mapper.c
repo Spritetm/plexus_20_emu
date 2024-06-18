@@ -4,6 +4,12 @@
 #include <assert.h>
 #include "csr.h"
 #include "emu.h"
+#include "log.h"
+
+// Debug logging
+#define MAPPER_LOG(msg_level, format_and_args...) \
+	log_printf(LOG_SRC_MAPPER, msg_level, format_and_args)
+#define MAPPER_LOG_DEBUG(format_and_args...) MAPPER_LOG(LOG_DEBUG, format_and_args)
 
 /*
 On the MMU:
@@ -55,7 +61,7 @@ void mapper_write16(void *obj, unsigned int a, unsigned int val) {
 	} else {
 		m->desc[a/2].w0=val;
 	}
-//	if (a/2==2048) printf("write page %d, w%d. w0=%x, w1=%x\n", a/2, a&1, m->desc[a/2].w0, m->desc[a/2].w1);
+	if (a/2==2048) MAPPER_LOG_DEBUG("write page %d, w%d. w0=%x, w1=%x\n", a/2, a&1, m->desc[a/2].w0, m->desc[a/2].w1);
 }
 
 void mapper_write32(void *obj, unsigned int a, unsigned int val) {
@@ -67,7 +73,7 @@ void mapper_write32(void *obj, unsigned int a, unsigned int val) {
 unsigned int mapper_read16(void *obj, unsigned int a) {
 	mapper_t *m=(mapper_t*)obj;
 	a=a/2; //word addr
-//	if (a/2==2048) printf("read page %d, w%d. w0=%x, w1=%x\n", a/2, a&1, m->desc[a/2].w0, m->desc[a/2].w1);
+	if (a/2==2048) MAPPER_LOG_DEBUG("read page %d, w%d. w0=%x, w1=%x\n", a/2, a&1, m->desc[a/2].w0, m->desc[a/2].w1);
 	if (a&1) {
 		return m->desc[a/2].w1;
 	} else {
@@ -95,7 +101,7 @@ int do_map(mapper_t *m, unsigned int a, unsigned int is_write) {
 	int phys_p=m->desc[p].w1&W1_PAGE_MASK;
 	int phys=(a&0xFFF)|(phys_p<<12);
 	assert(phys<8*1024*1024);
-//	printf("do_map %s 0x%x to 0x%x, virt page %d phys page %d\n", m->sysmode?"sys":"usr", a, phys, p, phys_p);
+	MAPPER_LOG_DEBUG("do_map %s 0x%x to 0x%x, virt page %d phys page %d\n", m->sysmode?"sys":"usr", a, phys, p, phys_p);
 	return phys;
 }
 

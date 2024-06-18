@@ -2,8 +2,14 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "emu.h"
+#include "log.h"
 
 //Simple and stupid mbus loopback driver. Only good to pass diags.
+
+// Debug logging
+#define MBUS_LOG(msg_level, format_and_args...) \
+	log_printf(LOG_SRC_MBUS, msg_level, format_and_args)
+#define MBUS_LOG_DEBUG(format_and_args...) MBUS_LOG(LOG_DEBUG, format_and_args)
 
 /*
 Mbus is an 16-bit Intel bus so LE. M68K is BE. If you write words through 
@@ -14,7 +20,7 @@ transparently, but a write/read to 8-bit address x happens to x^1 :X
 */
 
 void mbus_write8(void *obj, unsigned int a, unsigned int val) {
-//	printf("MBUS: w %x->%x %x\n", a, a+0x780000, val);
+	MBUS_LOG_DEBUG("MBUS: w %x->%x %x\n", a, a+0x780000, val);
 	emu_write_byte((a+0x780000)^1, val);
 }
 
