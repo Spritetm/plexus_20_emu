@@ -11,6 +11,13 @@
 #include "scsi.h"
 #include "mbus.h"
 #include "rtc.h"
+#include "log.h"
+
+// Debug logging
+#define EMU_LOG(msg_level, format_and_args...) \
+	log_printf(LOG_SRC_EMU, msg_level, format_and_args)
+#define EMU_LOG_DEBUG(format_and_args...) EMU_LOG(LOG_DEBUG, format_and_args)
+#define EMU_LOG_INFO( format_and_args...) EMU_LOG(LOG_INFO,  format_and_args)
 
 typedef struct mem_range_t mem_range_t;
 
@@ -77,15 +84,15 @@ void dump_cpu_state() {
 
 	unsigned int mem=m68k_read_memory_8(0xc00604);
 
-	printf("id %d CPU %d PC %08X SP %08X SR %08X D0 %08X m %08X\n", insn_id, cur_cpu, pc, sp, sr, d0, mem);
+	EMU_LOG_INFO("id %d CPU %d PC %08X SP %08X SR %08X D0 %08X m %08X\n", insn_id, cur_cpu, pc, sp, sr, d0, mem);
 }
 
 void dump_callstack() {
-	printf("Callstack (CPU %d): ", cur_cpu);
+	EMU_LOG_INFO("Callstack (CPU %d): ", cur_cpu);
 	for (int i=callstack_ptr[cur_cpu]-1; i>=0; --i) {
-		printf("%06X ", callstack[cur_cpu][i]);
+		EMU_LOG_INFO("%06X ", callstack[cur_cpu][i]);
 	}
-	printf("\n");
+	EMU_LOG_INFO("\n");
 }
 
 
@@ -122,7 +129,7 @@ void setup_ram(const char *name) {
 	m->write8=ram_write8;
 	m->write16=ram_write16;
 	m->write32=ram_write32;
-	printf("Set up 0x%X bytes of RAM in section '%s'.\n", m->size, m->name);
+	EMU_LOG_INFO("Set up 0x%X bytes of RAM in section '%s'.\n", m->size, m->name);
 }
 
 
@@ -133,46 +140,46 @@ void setup_rom(const char *name, const char *filename) {
 	m->read8=ram_read8;
 	m->read16=ram_read16;
 	m->read32=ram_read32;
-	printf("Loaded ROM '%s' into section '%s' at addr %x\n", filename, name, m->offset);
+	EMU_LOG_INFO("Loaded ROM '%s' into section '%s' at addr %x\n", filename, name, m->offset);
 }
 
 #define PRINT_MEMREAD 0
 
 unsigned int m68k_read_memory_32(unsigned int address) {
-//	if (address==0) printf("read addr 0\n");
+	if (address==0) EMU_LOG_DEBUG("read addr 0\n");
 	mem_range_t *m=find_range_by_addr(address);
 	//HACK! If this is set, diags get more verbose
 	if (address==0xC00644) return 1;
 	if (address==0xC006de) return 1;
 	if (!m) {
-		printf("Read32 from unmapped addr %08X\n", address);
+		EMU_LOG_INFO("Read32 from unmapped addr %08X\n", address);
 		dump_cpu_state();
 		return 0xdeadbeef;
 	}
 	if (!m->read32) {
-		printf("No read32 implemented for '%s', addr 0x%08X\n", m->name, address);
+		EMU_LOG_INFO("No read32 implemented for '%s', addr 0x%08X\n", m->name, address);
 		dump_cpu_state();
 		return 0xdeadbeef;
 	}
 #if PRINT_MEMREAD
-	printf("read32 %s %x -> %x\n", m->name, address, m->read32(m->obj, address - m->offset));
+	EMU_LOG_INFO("read32 %s %x -> %x\n", m->name, address, m->read32(m->obj, address - m->offset));
 #endif
 	return m->read32(m->obj, address - m->offset);
 }
 unsigned int m68k_read_memory_16(unsigned int address) {
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
-		printf("Read16 from unmapped addr %08X\n", address);
+		EMU_LOG_INFO("Read16 from unmapped addr %08X\n", address);
 		dump_cpu_state();
 		return 0xbeef;
 	}
 	if (!m->read16) {
-		printf("No read16 implemented for '%s', addr 0x%08X\n", m->name, address);
+		EMU_LOG_INFO("No read16 implemented for '%s', addr 0x%08X\n", m->name, address);
 		dump_cpu_state();
 		return 0xbeef;
 	}
 #if PRINT_MEMREAD
-	printf("read16 %s %x -> %x\n", m->name, address, m->read16(m->obj, address - m->offset));
+	EMU_LOG_INFO("read16 %s %x -> %x\n", m->name, address, m->read16(m->obj, address - m->offset));
 #endif
 	return m->read16(m->obj, address - m->offset);
 }
@@ -180,17 +187,17 @@ unsigned int m68k_read_memory_16(unsigned int address) {
 unsigned int m68k_read_memory_8(unsigned int address) {
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
-		printf("Read8 from unmapped addr %08X\n", address);
+		EMU_LOG_INFO("Read8 from unmapped addr %08X\n", address);
 		dump_cpu_state();
 		return 0x5a;
 	}
 	if (!m->read8) {
-		printf("No read8 implemented for '%s', addr 0x%08X\n", m->name, address);
+		EMU_LOG_INFO("No read8 implemented for '%s', addr 0x%08X\n", m->name, address);
 		dump_cpu_state();
 		return 0x5a;
 	}
 #if PRINT_MEMREAD
-	printf("read8 %s %x -> %x\n", m->name, address, m->read8(m->obj, address - m->offset));
+	EMU_LOG_INFO("read8 %s %x -> %x\n", m->name, address, m->read8(m->obj, address - m->offset));
 #endif
 	return m->read8(m->obj, address - m->offset);
 }
@@ -200,11 +207,11 @@ void m68k_write_memory_8(unsigned int address, unsigned int value) {
 	watch_write(address, value, 8);
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
-		printf("Write8 to unmapped addr %08X data 0x%X\n", address, value);
+		EMU_LOG_INFO("Write8 to unmapped addr %08X data 0x%X\n", address, value);
 		return;
 	}
 	if (!m->write8) {
-		printf("No write8 implementation for %s, addr 0x%08X, data 0x%X\n", m->name, address, value);
+		EMU_LOG_INFO("No write8 implementation for %s, addr 0x%08X, data 0x%X\n", m->name, address, value);
 		return;
 	}
 	m->write8(m->obj, address - m->offset, value);
@@ -214,12 +221,12 @@ void m68k_write_memory_16(unsigned int address, unsigned int value) {
 	watch_write(address, value, 16);
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
-		printf("Write16 to unmapped addr %08X data 0x%X\n", address, value);
+		EMU_LOG_INFO("Write16 to unmapped addr %08X data 0x%X\n", address, value);
 		dump_cpu_state();
 		return;
 	}
 	if (!m->write16) {
-		printf("No write16 implementation for %s, addr 0x%08X, data 0x%X\n", m->name, address, value);
+		EMU_LOG_INFO("No write16 implementation for %s, addr 0x%08X, data 0x%X\n", m->name, address, value);
 		dump_cpu_state();
 		return;
 	}
@@ -230,12 +237,12 @@ void m68k_write_memory_32(unsigned int address, unsigned int value) {
 	watch_write(address, value, 32);
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
-		printf("Write32 to unmapped addr %08X data 0x%X\n", address, value);
+		EMU_LOG_INFO("Write32 to unmapped addr %08X data 0x%X\n", address, value);
 		dump_cpu_state();
 		return;
 	}
 	if (!m->write32) {
-		printf("No write32 implementation for '%s', addr 0x%08X, data 0x%X\n", m->name, address, value);
+		EMU_LOG_INFO("No write32 implementation for '%s', addr 0x%08X, data 0x%X\n", m->name, address, value);
 		dump_cpu_state();
 		return;
 	}
@@ -335,13 +342,13 @@ void emu_enable_mapper(int do_enable) {
 		if (r->size!=0) {
 			mr->size=r->size;
 			r->size=0;
-//			printf("Mapper ENABLED\n");
+			EMU_LOG_DEBUG("Mapper ENABLED\n");
 		}
 	} else {
 		if (mr->size!=0) {
 			r->size=mr->size;
 			mr->size=0;
-//			printf("Mapper DISABLED\n");
+			EMU_LOG_DEBUG("Mapper DISABLED\n");
 		}
 	}
 }
@@ -398,14 +405,14 @@ int m68k_int_cb(int level) {
 	}
 	vectors[cur_cpu][r]=0;
 	raise_highest_int();
-//	printf("Int ack %x\n", r);
+	EMU_LOG_DEBUG("Int ack %x\n", r);
 	return r;
 }
 
 int need_raise_highest_int[2]={0};
 
 void emu_raise_int(uint8_t vector, uint8_t level, int cpu) {
-//	printf("Interrupt raised: %x\n", vector);
+	EMU_LOG_DEBUG("Interrupt raised: %x\n", vector);
 	vectors[cpu][vector]=level;
 	need_raise_highest_int[cpu]=1;
 //	do_tracefile=1;
@@ -436,7 +443,7 @@ static void watch_write(unsigned int addr, unsigned int val, int len) {
 		return;
 	}
 	dump_cpu_state();
-	printf("At ^^: Watch addr %06X changed to %08X\n", addr, val);
+	EMU_LOG_INFO("At ^^: Watch addr %06X changed to %08X\n", addr, val);
 }
 
 int emu_get_cur_cpu() {
@@ -467,7 +474,7 @@ int main(int argc, char **argv) {
 	//so this is a hack. ToDo: maybe implement properly.
 	mem_range_t *m=find_range_by_name("ROMSHDW");
 	mem_range_t *rom=find_range_by_name("U17");
-	printf("%x\n", rom->offset);
+	EMU_LOG_INFO("%x\n", rom->offset);
 	m->obj=rom->obj;
 	m->read8=rom->read8;
 	m->read16=rom->read16;
