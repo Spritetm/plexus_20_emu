@@ -28,14 +28,16 @@ static int mbus_held() {
 void mbus_write8(void *obj, unsigned int a, unsigned int val) {
 	MBUS_LOG_DEBUG("MBUS: w %x->%x %x\n", a, a+0x780000, val);
 	if (mbus_held()) return;
-	emu_write_byte((a+0x780000)^1, val);
+	int r=emu_write_byte((a+0x780000)^1, val);
+	if (!r) emu_mbus_error(a);
 }
 
 void mbus_write16(void *obj, unsigned int a, unsigned int val) {
 	MBUS_LOG_DEBUG("MBUS: w %x->%x %x\n", a, a+0x780000, val);
 	if (mbus_held()) return;
-	emu_write_byte((a+0x780000), val>>8);
-	emu_write_byte((a+0x780001), val);
+	int r=emu_write_byte((a+0x780000), val>>8);
+	r&=emu_write_byte((a+0x780001), val);
+	if (!r) emu_mbus_error(a);
 }
 
 void mbus_write32(void *obj, unsigned int a, unsigned int val) {
@@ -45,15 +47,24 @@ void mbus_write32(void *obj, unsigned int a, unsigned int val) {
 
 unsigned int mbus_read8(void *obj, unsigned int a) {
 	if (mbus_held()) return 0;
-	return emu_read_byte((a+0x780000)^1);
+	int r=emu_read_byte((a+0x780000)^1);
+	if (r==-1) {
+		emu_mbus_error(a|EMU_MBUS_ERROR_READ);
+		r=0;
+	}
+	return r;
 }
 
 unsigned int mbus_read16(void *obj, unsigned int a) {
 	if (mbus_held()) return 0;
-	unsigned int r;
-	r=emu_read_byte((a+0x780000))<<8;
-	r|=emu_read_byte((a+0x780001));
-	return r;
+	int r1=emu_read_byte((a+0x780000));
+	int r2=emu_read_byte((a+0x780001));
+	if (r1==-1 || r2==-1) {
+		emu_mbus_error(a|EMU_MBUS_ERROR_READ);
+		r1=0;
+		r2=0;
+	}
+	return (r1<<8)|r2;
 }
 
 unsigned int mbus_read32(void *obj, unsigned int a) {

@@ -1,4 +1,6 @@
 
+
+
 typedef struct mapper_t mapper_t;
 
 unsigned int mapper_read16(void *obj, unsigned int a);
@@ -15,3 +17,13 @@ unsigned int mapper_ram_read16(void *obj, unsigned int a);
 unsigned int mapper_ram_read32(void *obj, unsigned int a);
 
 void mapper_set_sysmode(mapper_t *m, int cpu_in_sysmode);
+
+//note RWX flags match page tables
+#define ACCESS_SYSTEM 0x1
+#define ACCESS_R 0x80000000
+#define ACCESS_W 0x40000000
+#define ACCESS_X 0x20000000
+
+int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags);
+
+

@@ -15,3 +15,6 @@ int csr_cpu_is_reset(csr_t *csr, int cpu);
 int csr_get_rtc_int_ena(csr_t *csr, int cpu);
 int csr_try_mbus_held(csr_t *csr);
 
+
+#define CSR_ERR_MBUS 1
+void csr_raise_error(csr_t *c, int error, unsigned int addr);

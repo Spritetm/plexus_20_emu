@@ -5,6 +5,7 @@
 #include "csr.h"
 #include "emu.h"
 #include "log.h"
+#include "mapper.h"
 
 // Debug logging
 #define MAPPER_LOG(msg_level, format_and_args...) \
@@ -22,7 +23,6 @@ We have space for 8K physical pages; this means we could map
 to 32MiB of physical RAM.
 
 */
-
 
 typedef struct {
 	uint16_t w0;
@@ -43,13 +43,36 @@ typedef struct {
 #define W0_UID_SHIFT 8
 #define W0_UID_MASK 0xff
 
-typedef struct {
+struct mapper_t {
 	//2K entries for usr, 2K for sys
 	desc_t desc[4096];
 	uint8_t *physram;
 	int physram_size;
 	int sysmode; //indicates if next accesses are in sysmode or not
-} mapper_t;
+};
+
+static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags) {
+	assert(page<4096);
+	unsigned int ac=(m->desc[page].w1<<16)+m->desc[page].w0;
+	int fault=(ac&access_flags)&(ACCESS_R|ACCESS_W|ACCESS_X);
+	//todo: also check uid
+//	if (fault) printf("Mapper: Access fault at page addr %x, fault %x\n", page<<12, fault);
+	return !fault;
+}
+
+int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags) {
+	//SRAM access is unrestricted
+	if (a>=0xC00000 && a<0xC04000) return 1;
+	//Map virtual page to phyical page.
+	int p=a>>12; //4K pages
+	if (p>=2048) {
+		printf("mapper_access_allowed: out of range addr %x\n", a);
+		exit(1);
+	}
+	if (access_flags&ACCESS_SYSTEM) p+=2048;
+	return access_allowed_page(m, p, access_flags);
+}
+
 
 void mapper_write16(void *obj, unsigned int a, unsigned int val) {
 	if (emu_get_cur_cpu()==0) return; //seems writes from dma cpu are not allowed

@@ -217,6 +217,14 @@ void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 	}
 }
 
+void csr_raise_error(csr_t *c, int error, unsigned int addr) {
+	if (error==CSR_ERR_MBUS) {
+		emu_raise_int(0x7F, 1, 1);
+		c->reg[CSR_I_MBERR/2]=(addr>>11)&0xfe;
+		if (addr&EMU_MBUS_ERROR_READ) c->reg[CSR_I_MBERR/2]|=0x1;
+	}
+}
+
 
 csr_t *csr_new(scsi_t *scsi) {
 	csr_t *ret=calloc(sizeof(csr_t), 1);
