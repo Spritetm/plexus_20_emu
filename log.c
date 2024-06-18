@@ -1,6 +1,7 @@
 #include "log.h"
 #include <stdio.h>
 #include <stdarg.h>
+#include <assert.h>
 
 // Default log levels for log sources
 #define LOG_UART_DEFAULT_LEVEL   LOG_INFO
@@ -10,19 +11,18 @@
 #define LOG_SCSI_DEFAULT_LEVEL   LOG_INFO
 #define LOG_EMU_DEFAULT_LEVEL    LOG_INFO
 #define LOG_RAMROM_DEFAULT_LEVEL LOG_INFO
-#define LOG_RTC_DEFAULT_LEVEL    LOG_DEBUG
+#define LOG_RTC_DEFAULT_LEVEL    LOG_INFO
 #define LOG_EMU_DEFAULT_LEVEL    LOG_INFO
 
-// These must be in the same order as enum log_source (in log.h)
 int log_channel_verbose_level[] = {
-	LOG_UART_DEFAULT_LEVEL,
-	LOG_CSR_DEFAULT_LEVEL,
-	LOG_MBUS_DEFAULT_LEVEL,
-	LOG_MAPPER_DEFAULT_LEVEL,
-	LOG_SCSI_DEFAULT_LEVEL,
-	LOG_RAMROM_DEFAULT_LEVEL,
-	LOG_RTC_DEFAULT_LEVEL,
-	LOG_EMU_DEFAULT_LEVEL
+	[LOG_SRC_UART]=LOG_UART_DEFAULT_LEVEL,
+	[LOG_SRC_CSR]=LOG_CSR_DEFAULT_LEVEL,
+	[LOG_SRC_MBUS]=LOG_MBUS_DEFAULT_LEVEL,
+	[LOG_SRC_MAPPER]=LOG_MAPPER_DEFAULT_LEVEL,
+	[LOG_SRC_SCSI]=LOG_SCSI_DEFAULT_LEVEL,
+	[LOG_SRC_RAMROM]=LOG_RAMROM_DEFAULT_LEVEL,
+	[LOG_SRC_RTC]=LOG_RTC_DEFAULT_LEVEL,
+	[LOG_SRC_EMU]=LOG_EMU_DEFAULT_LEVEL
 };
 
 // "ANSI" colour escape sequences
@@ -42,16 +42,22 @@ const char *log_level_colour[] = {
 	ANSI_COLOUR_GREY     // LOG_DEBUG   (4)
 };
 
-int log_printf(enum log_source source, enum log_level msg_level, const char *format, ...) {
-        va_list ap;
-        int printed = 0;
+void log_set_level(enum log_source source, enum log_level msg_level) {
+	log_channel_verbose_level[source]=msg_level;
+}
 
-        if (log_channel_verbose_level[source] >= msg_level) {
+int log_printf(enum log_source source, enum log_level msg_level, const char *format, ...) {
+	static_assert(sizeof(log_channel_verbose_level)/sizeof(log_channel_verbose_level[0])==LOG_SRC_MAX, 
+				"log_channel_verbose_level missing an entry");
+	va_list ap;
+	int printed = 0;
+
+	if (log_channel_verbose_level[source] >= msg_level) {
 		printf("%s", log_level_colour[msg_level]);
 		va_start(ap, format);
 		printed = vprintf(format, ap);
 		va_end(ap);
 		printf("%s", ANSI_COLOUR_NORMAL);
-        }
-        return printed;
+	}
+	return printed;
 }
