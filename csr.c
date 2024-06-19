@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <assert.h>
 #include "csr.h"
 #include "emu.h"
 #include "log.h"
@@ -11,6 +12,7 @@
         log_printf(LOG_SRC_CSR, msg_level, format_and_args)
 #define CSR_LOG_DEBUG(format_and_args...) CSR_LOG(LOG_DEBUG, format_and_args)
 #define CSR_LOG_INFO(format_and_args...) CSR_LOG(LOG_INFO, format_and_args)
+#define CSR_LOG_WARN(format_and_args...) CSR_LOG(LOG_WARNING, format_and_args)
 
 //csr: usr/include/sys/mtpr.h, note we're Robin
 
@@ -27,7 +29,7 @@
 #define CSR_O_LEDS	0x10	/* led register */
 #define CSR_I_LEDS	0x10	/* led register */
 #define CSR_I_USRT 0x12	/* usart register */
-#define CSR_I_ERR	0x14	/* misc functoins */
+#define CSR_I_ERR	0x14	/* error reporting */
 #define CSR_O_MISC 0x16	/* misc. functions */
 #define CSR_I_MISC 0x16	/* misc. functions */
 #define CSR_O_KILL 0x18	/* kill job / dma cpu */
@@ -62,6 +64,7 @@
 #define KILL_NKILL_JOB 0x2
 #define KILL_INT_DMA 0x4
 #define KILL_INT_JOB 0x8
+#define KILL_JKPD 0x40 //job control protection disable
 #define KILL_CUR_IS_JOB 0x80
 
 
@@ -78,6 +81,23 @@
 #define	RESET_MPERR			0x160  /* reset memory parity err flag SET ON RESET*/
 #define	RESET_SWINT			0x180  /* reset switch interrupt */
 #define	RESET_SCSIBERR		0x1a0  /* reset scsi bus error flag */
+
+
+#define ERR_AS26			0x8000 //deadman timer for all DMA transfers
+#define ERR_SOOPS			0x4000 //Any DMA access of multibus or map
+#define ERR_UBE_DMA			0x1000 //User ID mismatch
+#define ERR_ABE_DMA			0x0800 //Privilege violation
+#define ERR_EN_BLK			0x0400
+#define ERR_EN_DMA			0x0200
+#define ERR_EN_JOB			0x0100
+#define ERR_AERR_JOB		0x0080 //User in system space
+#define ERR_DERR_JOB		0x0040 //Generated when job CPU accesses DMA bus
+#define ERR_MBTO			0x0020 //Multibus timeout
+#define ERR_UBE_JOB			0x0010 //User ID mismatch
+#define ERR_ABE_JOB			0x0008 //Privilege violation
+#define ERR_EN_JOB2			0x0004 //duplicate with 0x100?
+#define ERR_EN_BLK2			0x0002 //duplicate with 0x200?
+#define ERR_EN_MBUS			0x0001
 
 
 struct csr_t {
@@ -100,7 +120,6 @@ int csr_get_rtc_int_ena(csr_t *csr, int cpu) {
 	}
 }
 
-
 int csr_try_mbus_held(csr_t *csr) {
 	if (csr->reg[CSR_O_MISC/2]&MISC_HOLDMBUS) {
 		csr->reg[CSR_O_MISC/2]|=MISC_TBUSY;
@@ -109,10 +128,22 @@ int csr_try_mbus_held(csr_t *csr) {
 	return 1;
 }
 
+void cst_set_access_error(csr_t *csr, int cpu, int type) {
+	int v=0;
+	if (cpu==0) {
+		if (type&ACCESS_ERROR_U) v|=ERR_UBE_DMA;
+		if (type&ACCESS_ERROR_A) v|=ERR_ABE_DMA;
+	} else {
+		if (type&ACCESS_ERROR_U) v|=ERR_UBE_JOB;
+		if (type&ACCESS_ERROR_A) v|=ERR_ABE_JOB;
+	}
+	csr->reg[CSR_I_ERR/2]|=v;
+}
+
 void csr_write16(void *obj, unsigned int a, unsigned int val) {
 	csr_t *c=(csr_t*)obj;
 	if (a==CSR_O_RSEL) {
-		CSR_LOG_DEBUG("csr write16 %x (reset sel) val %x\n", a, val);
+		CSR_LOG_DEBUG("csr write16 0x%X (reset sel) val 0x%X\n", a, val);
 	} else if (a==CSR_O_SC_C || a==CSR_O_SC_C+2) {
 		c->reg[a/2]=val;
 		scsi_set_bytecount(c->scsi, ((c->reg[CSR_O_SC_C/2]<<16)+c->reg[CSR_O_SC_C/2+1])&0xffffff);
@@ -130,11 +161,21 @@ void csr_write16(void *obj, unsigned int a, unsigned int val) {
 		if ((val&MISC_SCSIDL)==0) v|=SCSI_DIAG_LATCH;
 		if ((val&MISC_DIAGPESC)) v|=SCSI_DIAG_PARITY;
 		scsi_set_diag(c->scsi, v);
+		v=0;
+		if (!(val&MISC_BOOTDMA)) v|=1;
+		if (!(val&MISC_BOOTJOB)) v|=2;
+		emu_set_force_a23(v);
 	} else if (a==CSR_O_KILL) { //kill
-		CSR_LOG_DEBUG("csr write16 %x (kill) val %x\n", a, val);
-		val&=0x3; //rest is set elsewhere
+		CSR_LOG_DEBUG("csr write16 0x%X (kill) val 0x%X\n", a, val);
+		assert((val&0x40)==0); //we don't support this bit yet but sw doesn't seem to use it
+		val&=0x43; //rest is set elsewhere
+	} else if (a==CSR_I_ERR) {
+		CSR_LOG_DEBUG("csr write16 0x%X (err) val 0x%X - reg is RO?\n", a, val);
+		val=c->reg[a/2];
+	} else if (a==CSR_O_MAPID) {
+		emu_set_cur_mapid(val>>8);
 	} else {
-		CSR_LOG_DEBUG("csr write16 %x val %x\n", a, val);
+		CSR_LOG_DEBUG("csr write16 0x%X val 0x%X\n", a, val);
 	}
 	c->reg[a/2]=val;
 }
@@ -157,6 +198,7 @@ void csr_write8(void *obj, unsigned int a, unsigned int val) {
 
 
 unsigned int csr_read16(void *obj, unsigned int a) {
+	if (a<4) CSR_LOG_WARN("Read from unknown reg %x\n", a);
 	csr_t *c=(csr_t*)obj;
 	int b=scsi_get_bytecount(c->scsi);
 	c->reg[CSR_O_SC_C/2]=b>>16;
@@ -171,8 +213,9 @@ unsigned int csr_read16(void *obj, unsigned int a) {
 		if (emu_get_cur_cpu()) ret|=0x80;
 	} else if (a==CSR_O_SC_R) {
 		return scsi_get_scsireg(c->scsi);
+	} else {
+		CSR_LOG_DEBUG("csr read16 0x%X -> 0x%X\n", a, ret);
 	}
-	CSR_LOG_DEBUG("csr read16 0x%X -> 0x%X\n", a, ret);
 	return ret;
 }
 
@@ -216,6 +259,12 @@ void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 	} else if (a==RESET_MULTERR) {
 		CSR_LOG_DEBUG("CSR: Reset mbus error\n");
 		c->reg[CSR_O_MISC]&=~MISC_TBUSY;
+	} else if (a==RESET_JBERR) {
+		CSR_LOG_DEBUG("CSR: Reset job bus error\n");
+		c->reg[CSR_I_ERR/2]&=~(ERR_UBE_JOB|ERR_ABE_JOB);
+	} else if (a==RESET_DBERR) {
+		CSR_LOG_DEBUG("CSR: Reset dma bus error\n");
+		c->reg[CSR_I_ERR/2]&=~(ERR_UBE_DMA|ERR_ABE_DMA);
 	} else if (a==RESET_CINTJ || a==RESET_CINTJ) {
 		//do nothing, our implementation doesn't need this reset.
 	} else {

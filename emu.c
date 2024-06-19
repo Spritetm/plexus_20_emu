@@ -3,6 +3,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <time.h>
 #include "Musashi/m68k.h"
 #include "uart.h"
 #include "ramrom.h"
@@ -33,6 +34,7 @@ int insn_id=0;
 int cur_cpu;
 
 mapper_t *mapper;
+csr_t *csr;
 
 int32_t callstack[2][8192];
 int callstack_ptr[2]={0};
@@ -51,7 +53,6 @@ struct mem_range_t {
 };
 
 static mem_range_t memory[]={
-	{.name="ROMSHDW", .offset=0, .size=0}, ///used for boot
 //	{.name="RAM",     .offset=0, .size=0x200000}, //only 2MiB of RAM
 	{.name="RAM",     .offset=0, .size=0x800000}, //fully decked out with 8MiB of RAM
 	{.name="MAPRAM",  .offset=0, .size=0}, //MMU-mapped RAM
@@ -75,6 +76,8 @@ static mem_range_t memory[]={
 };
 
 int trace_enabled=0;
+
+int mapper_enabled=0;
 
 void dump_cpu_state() {
 	//note REG_PPC is previous PC, aka the currently executing insn
@@ -147,7 +150,7 @@ void setup_rom(const char *name, const char *filename) {
 
 #define PRINT_MEMREAD 0
 
-unsigned int m68k_read_memory_32(unsigned int address) {
+static unsigned int read_memory_32(unsigned int address) {
 	if (address==0) EMU_LOG_DEBUG("read addr 0\n");
 	mem_range_t *m=find_range_by_addr(address);
 	//HACK! If this is set, diags get more verbose
@@ -168,7 +171,8 @@ unsigned int m68k_read_memory_32(unsigned int address) {
 #endif
 	return m->read32(m->obj, address - m->offset);
 }
-unsigned int m68k_read_memory_16(unsigned int address) {
+
+static unsigned int read_memory_16(unsigned int address) {
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
 		EMU_LOG_INFO("Read16 from unmapped addr %08X\n", address);
@@ -186,7 +190,7 @@ unsigned int m68k_read_memory_16(unsigned int address) {
 	return m->read16(m->obj, address - m->offset);
 }
 
-unsigned int m68k_read_memory_8(unsigned int address) {
+static unsigned int read_memory_8(unsigned int address) {
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
 		EMU_LOG_INFO("Read8 from unmapped addr %08X\n", address);
@@ -205,7 +209,7 @@ unsigned int m68k_read_memory_8(unsigned int address) {
 }
 
 
-void m68k_write_memory_8(unsigned int address, unsigned int value) {
+static void write_memory_8(unsigned int address, unsigned int value) {
 	watch_write(address, value, 8);
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
@@ -219,7 +223,7 @@ void m68k_write_memory_8(unsigned int address, unsigned int value) {
 	m->write8(m->obj, address - m->offset, value);
 }
 
-void m68k_write_memory_16(unsigned int address, unsigned int value) {
+static void write_memory_16(unsigned int address, unsigned int value) {
 	watch_write(address, value, 16);
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
@@ -235,7 +239,7 @@ void m68k_write_memory_16(unsigned int address, unsigned int value) {
 	m->write16(m->obj, address - m->offset, value);
 }
 
-void m68k_write_memory_32(unsigned int address, unsigned int value) {
+static void write_memory_32(unsigned int address, unsigned int value) {
 	watch_write(address, value, 32);
 	mem_range_t *m=find_range_by_addr(address);
 	if (!m) {
@@ -251,17 +255,91 @@ void m68k_write_memory_32(unsigned int address, unsigned int value) {
 	m->write32(m->obj, address - m->offset, value);
 }
 
+unsigned int fc_bits=0;
+
+void emu_set_cur_mapid(uint8_t id) {
+	mapper_set_mapid(mapper, id);
+}
+
+//Note: This should be reworked. Better to have generic [read/write]_memory_[8|16|32]
+//functions that take flags, then dispatch to memory handlers that also take those flags.
+//The flags contain access type and device that accesses it (job, dma, scsi, mbus) and
+//the memory handlers can check against permissions and throw a bus error by calling
+//some function with the flags. That function can then decode the source and do the right
+//thing to actually throw the error.
+
+static int check_mem_access(unsigned int address, int flags) {
+	if (!mapper_enabled) return 1;
+	if ((fc_bits&3)==2) flags=ACCESS_X;
+	if (fc_bits&4) flags|=ACCESS_SYSTEM;
+	if (!mapper_access_allowed(mapper, address, flags)) {
+		EMU_LOG_DEBUG("Bus error! Access %x\n", address);
+//		if (address==0x1000) do_tracefile=1;
+//		dump_cpu_state();
+//		dump_callstack();
+		cst_set_access_error(csr, cur_cpu, ACCESS_ERROR_A);
+		m68k_pulse_bus_error();
+		return 0;
+	}
+	return 1;
+}
+
+int force_a23=3; //start with both forced to boot from rom
+
+void emu_set_force_a23(int val) {
+	force_a23=val;
+}
+
+unsigned int m68k_read_memory_32(unsigned int address) {
+	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
+	if (!check_mem_access(address, ACCESS_R)) return 0;
+	return read_memory_32(address);
+}
+
+unsigned int m68k_read_memory_16(unsigned int address) {
+	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
+	if (!check_mem_access(address, ACCESS_R)) return 0;
+	return read_memory_16(address);
+}
+
+
+unsigned int m68k_read_memory_8(unsigned int address) {
+	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
+	if (!check_mem_access(address, ACCESS_R)) return 0;
+	return read_memory_8(address);
+}
+
+void m68k_write_memory_8(unsigned int address, unsigned int value) {
+	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
+	if (!check_mem_access(address, ACCESS_W)) return;
+	write_memory_8(address, value);
+}
+
+void m68k_write_memory_16(unsigned int address, unsigned int value) {
+	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
+	if (!check_mem_access(address, ACCESS_W)) return;
+	write_memory_16(address, value);
+}
+
+void m68k_write_memory_32(unsigned int address, unsigned int value) {
+	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
+	if (!check_mem_access(address, ACCESS_W)) return;
+	write_memory_32(address, value);
+}
+
+
+
 //Used for SCSI DMA transfers as well as mbus transfers.
 int emu_read_byte(int addr) {
 	int access_flags=ACCESS_R|ACCESS_SYSTEM;
 	if (!mapper_access_allowed(mapper, addr, access_flags)) return -1;
-	return m68k_read_memory_8(addr);
+	return read_memory_8(addr);
 }
 
 int emu_write_byte(int addr, int val) {
 	int access_flags=ACCESS_R|ACCESS_SYSTEM;
 	if (!mapper_access_allowed(mapper, addr, access_flags)) return 0;
-	m68k_write_memory_8(addr, val);
+	write_memory_8(addr, val);
 	return -1;
 }
 
@@ -347,6 +425,7 @@ mapper_t *setup_mapper(const char *name, const char *mapram, const char *physram
 }
 
 void emu_enable_mapper(int do_enable) {
+	mapper_enabled=do_enable;
 	mem_range_t *r=find_range_by_name("RAM");
 	mem_range_t *mr=find_range_by_name("MAPRAM");
 	if (do_enable) {
@@ -396,7 +475,12 @@ void setup_nop(const char *name) {
 
 
 void m68k_fc_cb(unsigned int fc) {
+	fc_bits=fc;
 	mapper_set_sysmode(mapper, fc&4);
+	//Guess: mapid resets on int?
+	if ((fc&0x7)==7) {
+		mapper_set_mapid(mapper, 0);
+	}
 }
 
 //has a level if triggered, otherwise 0
@@ -433,7 +517,6 @@ void emu_raise_int(uint8_t vector, uint8_t level, int cpu) {
 	EMU_LOG_DEBUG("Interrupt raised: %x\n", vector);
 	vectors[cpu][vector]=level;
 	need_raise_highest_int[cpu]=1;
-//	do_tracefile=1;
 }
 
 void emu_raise_rtc_int() {
@@ -442,6 +525,8 @@ void emu_raise_rtc_int() {
 	if (csr_get_rtc_int_ena(c, 0)) emu_raise_int(0x83, 6, 0);
 	if (csr_get_rtc_int_ena(c, 1)) emu_raise_int(0x83, 6, 1);
 }
+
+int old_val;
 
 void m68k_trace_cb(unsigned int pc) {
 	insn_id++;
@@ -453,7 +538,8 @@ void m68k_trace_cb(unsigned int pc) {
 	if ((ir&0xFFC0)==0x4e80) callstack[cur_cpu][callstack_ptr[cur_cpu]++]=prev_pc;
 	if (ir==0x4E75) callstack_ptr[cur_cpu]--;
 	prev_pc=pc;
-	if (do_tracefile && cur_cpu==1) fprintf(tracefile, "%d %d %06x\n", insn_id, cur_cpu, pc);
+	unsigned int sr=m68k_get_reg(NULL, M68K_REG_SR);
+	if (do_tracefile) fprintf(tracefile, "%d %d %06x %x\n", insn_id, cur_cpu, pc, sr);
 	if (!trace_enabled) return;
 	dump_cpu_state();
 }
@@ -473,6 +559,10 @@ int emu_get_cur_cpu() {
 	return cur_cpu;
 }
 
+void emu_bus_error() {
+	m68k_pulse_bus_error();
+}
+
 void emu_start(emu_cfg_t *cfg) {
 	tracefile=fopen("trace.txt","w");
 	setup_ram("RAM");
@@ -486,23 +576,11 @@ void emu_start(emu_cfg_t *cfg) {
 	uart[2]=setup_uart("UART_C", 0);
 	uart[3]=setup_uart("UART_D", 0);
 	setup_scsi("SCSIBUF");
-	csr_t *csr=setup_csr("CSR", "MMIO_WR", "SCSIBUF");
+	csr=setup_csr("CSR", "MMIO_WR", "SCSIBUF");
 	mapper=setup_mapper("MAPPER", "MAPRAM", "RAM");
 	setup_nop("MBUSIO");
 	setup_mbus("MBUSMEM");
 	rtc_t *rtc=setup_rtc("RTC");
-
-	//set up ROM shadow for boot
-	//technically, there's a bit in the CSR that forces bit 23 of the address high
-	//so this is a hack. ToDo: maybe implement properly.
-	mem_range_t *m=find_range_by_name("ROMSHDW");
-	mem_range_t *rom=find_range_by_name("U17");
-	EMU_LOG_INFO("%x\n", rom->offset);
-	m->obj=rom->obj;
-	m->read8=rom->read8;
-	m->read16=rom->read16;
-	m->read32=rom->read32;
-	m->size=rom->size;
 
 	void *cpuctx[2];
 	cpuctx[0]=calloc(m68k_context_size(), 1); //dma cpu
@@ -520,14 +598,6 @@ void emu_start(emu_cfg_t *cfg) {
 		m68k_set_irq(0);
 		m68k_get_context(cpuctx[i]);
 	}
-
-	//We run the DMA CPU from ROM for like a few cycles to let it boot
-	//properly. After that, it doesn't need the boot ROM at location
-	//0 anymore, so we disable it.
-	m68k_set_context(cpuctx[0]);
-	m68k_execute(10);
-	m->size=0; //disable shadow rom
-	m68k_get_context(cpuctx[0]);
 
 	int cpu_in_reset[2]={0};
 	int cycles_remaining[2]={0};

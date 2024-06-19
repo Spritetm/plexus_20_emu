@@ -11,6 +11,7 @@
 	log_printf(LOG_SRC_MBUS, msg_level, format_and_args)
 #define MBUS_LOG_DEBUG(format_and_args...) MBUS_LOG(LOG_DEBUG, format_and_args)
 #define MBUS_LOG_INFO(format_and_args...) MBUS_LOG(LOG_INFO, format_and_args)
+#define MBUS_LOG_NOTICE(format_and_args...) MBUS_LOG(LOG_NOTICE, format_and_args)
 
 /*
 Mbus is an 16-bit Intel bus so LE. M68K is BE. If you write words through 
@@ -30,7 +31,8 @@ static int mbus_held() {
 static int on_wrong_cpu(int addr) {
 	int r=emu_get_cur_cpu();
 	if (r==1) return 0;
-	MBUS_LOG_DEBUG("Mbus access to %x from wrong CPU\n", addr);
+	MBUS_LOG_NOTICE("Mbus access to %x from wrong CPU\n", addr);
+	emu_bus_error();
 	return 1;
 }
 
@@ -38,7 +40,7 @@ void mbus_write8(void *obj, unsigned int a, unsigned int val) {
 	if (on_wrong_cpu(a)) return;
 	MBUS_LOG_DEBUG("MBUS: w %x->%x %x\n", a, a+0x780000, val);
 	if (mbus_held()) {
-		MBUS_LOG_DEBUG("MBUS: ^^ write held.\n");
+		MBUS_LOG_NOTICE("MBUS: ^^ write held.\n");
 		return;
 	}
 	int r=emu_write_byte((a+0x780000)^1, val);
@@ -49,7 +51,7 @@ void mbus_write16(void *obj, unsigned int a, unsigned int val) {
 	if (on_wrong_cpu(a)) return;
 	MBUS_LOG_DEBUG("MBUS: w %x->%x %x\n", a, a+0x780000, val);
 	if (mbus_held()) {
-		MBUS_LOG_DEBUG("MBUS: ^^ write held.\n");
+		MBUS_LOG_NOTICE("MBUS: ^^ write held.\n");
 		return;
 	}
 	int r=emu_write_byte((a+0x780000), val>>8);

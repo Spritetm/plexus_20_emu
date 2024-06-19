@@ -17,6 +17,7 @@ unsigned int mapper_ram_read16(void *obj, unsigned int a);
 unsigned int mapper_ram_read32(void *obj, unsigned int a);
 
 void mapper_set_sysmode(mapper_t *m, int cpu_in_sysmode);
+void mapper_set_mapid(mapper_t *m, uint8_t id);
 
 //note RWX flags match page tables
 #define ACCESS_SYSTEM 0x1

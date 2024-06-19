@@ -15,6 +15,9 @@ int emu_write_byte(int addr, int val);
 
 void emu_raise_rtc_int();
 int emu_try_mbus_held();
+void emu_bus_error();
+void emu_set_cur_mapid(uint8_t mapid);
+void emu_set_force_a23(int val);
 
 typedef struct {
 	const char *u15_rom;

@@ -11,7 +11,7 @@
 #define MAPPER_LOG(msg_level, format_and_args...) \
 	log_printf(LOG_SRC_MAPPER, msg_level, format_and_args)
 #define MAPPER_LOG_DEBUG(format_and_args...) MAPPER_LOG(LOG_DEBUG, format_and_args)
-#define MAPPER_LOG_INFO(format_and_args...) MAPPER_LOG(LOG_DEBUG, format_and_args)
+#define MAPPER_LOG_INFO(format_and_args...) MAPPER_LOG(LOG_INFO, format_and_args)
 
 /*
 On the MMU:
@@ -34,6 +34,7 @@ typedef struct {
 
 //Note: on write of 32-bit, w0 is msb and w1 lsb
 
+//Note the RWX bits *disable* that access when 1.
 #define W1_R 0x8000
 #define W1_W 0x4000
 #define W1_X 0x2000
@@ -50,20 +51,28 @@ struct mapper_t {
 	uint8_t *physram;
 	int physram_size;
 	int sysmode; //indicates if next accesses are in sysmode or not
+	int cur_id;
 };
+
+void mapper_set_mapid(mapper_t *m, uint8_t id) {
+	if (m->cur_id!=id) MAPPER_LOG_DEBUG("Switching to map id %d\n", id);
+	m->cur_id=id;
+}
 
 static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags) {
 	assert(page<4096);
 	unsigned int ac=(m->desc[page].w1<<16)+m->desc[page].w0;
 	int fault=(ac&access_flags)&(ACCESS_R|ACCESS_W|ACCESS_X);
-	//todo: also check uid
-	if (fault) MAPPER_LOG_DEBUG("Mapper: Access fault at page addr %x, fault %x\n", page<<12, fault);
+	//todo: also check uid properly
+	int uid=(ac>>W0_UID_SHIFT)&W0_UID_MASK;
+	if (uid != m->cur_id) fault=(uid<<8|0xff);
+	if (fault) MAPPER_LOG_DEBUG("Mapper: Access fault at page %d, page addr %x, fault %x (page ent %x req %x)\n", page, (page&2047)<<12, fault, ac, access_flags);
 	return !fault;
 }
 
 int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags) {
-	//SRAM access is unrestricted
-	if (a>=0xC00000 && a<0xC04000) return 1;
+	//we only check RAM
+	if (a>=0x800000) return 1;
 	//Map virtual page to phyical page.
 	int p=a>>12; //4K pages
 	if (p>=2048) {
@@ -124,7 +133,8 @@ int do_map(mapper_t *m, unsigned int a, unsigned int is_write) {
 
 	int phys_p=m->desc[p].w1&W1_PAGE_MASK;
 	int phys=(a&0xFFF)|(phys_p<<12);
-	assert(phys<8*1024*1024);
+	phys&=((8*1024*1024)-1);
+//	assert(phys<8*1024*1024);
 	MAPPER_LOG_DEBUG("do_map %s 0x%x to 0x%x, virt page %d phys page %d\n", m->sysmode?"sys":"usr", a, phys, p, phys_p);
 	return phys;
 }
