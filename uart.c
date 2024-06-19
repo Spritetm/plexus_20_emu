@@ -1,15 +1,74 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include "uart.h"
 #include "emu.h"
 #include "log.h"
 
+#include <termios.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/select.h>
+
 // Debug logging
 #define UART_LOG(msg_level, format_and_args...) \
 	log_printf(LOG_SRC_UART, msg_level, format_and_args)
 #define UART_LOG_DEBUG(format_and_args...) UART_LOG(LOG_DEBUG, format_and_args)
+#define UART_LOG_INFO(format_and_args...)  UART_LOG(LOG_INFO,  format_and_args)
+
+// Console input handling
+//
+// TODO: we also need to hook, eg, SIGINT and disable raw mode on exit
+static struct termios orig_termios;
+
+void uart_disable_console_raw_mode() {
+	tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+	UART_LOG_INFO("Leaving tty raw mode\n");
+}
+
+void uart_set_console_raw_mode() {
+	tcgetattr(STDIN_FILENO, &orig_termios);
+	atexit(uart_disable_console_raw_mode);
+
+	struct termios raw = orig_termios;
+	tcgetattr(STDIN_FILENO, &raw);
+	raw.c_lflag &= ~(ECHO | ICANON);
+	int result = tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+	UART_LOG_INFO("Entering tty raw mode: %d (%d)\n", result, errno);
+}
+
+int uart_poll_for_console_character() {
+	char c;
+	fd_set input;
+	struct timeval no_wait = {
+		.tv_sec  = 0L,
+		.tv_usec = 0L
+	};
+	int result;
+
+	FD_ZERO(&input);
+	FD_SET(STDIN_FILENO, &input);
+
+	result = select((STDIN_FILENO+1), &input, NULL, NULL, &no_wait);
+
+	if (result > 0 && FD_ISSET(STDIN_FILENO, &input)) {
+		// read single character
+		result = read(STDIN_FILENO, &c, 1);
+		if (result == 1)
+			return c;
+	}
+
+	// Fall through, nothing waiting
+	return -1;
+}
+
+void uart_console_printc(char val) {
+	printf("%c", val);
+	fflush(stdout);
+}
+
 
 //The UARTs are Mostek MK68564 chips.
 
@@ -30,11 +89,10 @@ uart_t *uart_new(const char *name, int is_console) {
 	uart_t *u=calloc(sizeof(uart_t), 1);
 	u->name=strdup(name);
 	u->is_console=is_console;
-	return u;
-}
 
-void uart_console_printc(char val) {
-	printf("%c", val);
+	if (is_console) uart_set_console_raw_mode();
+
+	return u;
 }
 
 #define REG_CMD 0
@@ -91,6 +149,19 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 	addr=addr/2; //8-bit thing on 16-bit bus
 	int chan=(addr>>4)&1;
 	int a=(addr&0xf);
+	bool is_in_loopback = (u->chan[chan].regs[0]&1);
+
+	// Poll for console input if the emulated device might be expecting data
+	// (done at top of function because .has_char_rcv being set will determine
+	// if the character is ever read; so we cannot only do it in read character)
+	if (u->is_console && !is_in_loopback && !u->chan[chan].has_char_rcv) {
+		int in_ch = uart_poll_for_console_character();
+		if (in_ch >= 0) {
+			u->chan[chan].char_rcv = in_ch;
+			u->chan[chan].has_char_rcv = 1;
+		}
+	}
+
 	if (a==7) {
 		//D7-0: break, underrun, cts, hunt, dcd, tx buf empty, int pending, rx char avail
 		int r=0;
@@ -110,7 +181,11 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 		UART_LOG_DEBUG("uart %s chan %s: read8 status1 -> %x\n", u->name, chan?"B":"A", addr, r);
 		return r;
 	} else if (a==9) {
-		UART_LOG_DEBUG("read char %x\n", u->chan[chan].char_rcv);
+		if (u->is_console && !is_in_loopback) {
+			UART_LOG_DEBUG("read char %x\n", u->chan[chan].char_rcv);
+		} else {
+			UART_LOG_DEBUG("read char %x\n", u->chan[chan].char_rcv);
+		}
 		u->chan[chan].has_char_rcv=0;
 		return u->chan[chan].char_rcv;
 	}
