@@ -79,10 +79,7 @@ void mbus_write32(void *obj, unsigned int a, unsigned int val) {
 unsigned int mbus_read8(void *obj, unsigned int a) {
 	if (on_wrong_cpu(a)) return 0;
 	MBUS_LOG_DEBUG("MBUS: rb %x->%x\n", a, a+0x780000);
-
-	//This sounds silly, but the mbus probably doesn't support reading bytes. The
-	//only place in the diags that does that, expects a bus error afterwards.
-
+	//Mbus in diag modes errors with a MBTO.
 	emu_mbus_error(a|EMU_MBUS_ERROR_TIMEOUT);
 	return 0;
 }
@@ -90,22 +87,12 @@ unsigned int mbus_read8(void *obj, unsigned int a) {
 unsigned int mbus_read16(void *obj, unsigned int a) {
 	if (on_wrong_cpu(a)) return 0;
 	MBUS_LOG_DEBUG("MBUS: rw %x->%x\n", a, a+0x780000);
-	if (mbus_held()) {
-		MBUS_LOG_DEBUG("MBUS: Held read 0x%X\n", a);
-		return 0;
-	}
 	if (!emu_get_mb_diag()){
-//		emu_mbus_error(a|EMU_MBUS_ERROR_TIMEOUT);
 		return 0;
 	}
-	int r1=emu_read_byte((a+0x780000));
-	int r2=emu_read_byte((a+0x780001));
-	if (r1==-1 || r2==-1) {
-		emu_mbus_error(a|EMU_MBUS_ERROR_READ);
-		r1=0;
-		r2=0;
-	}
-	return (r1<<8)|r2;
+	//Mbus in diag modes errors with a MBTO.
+	emu_mbus_error(a|EMU_MBUS_ERROR_TIMEOUT);
+	return 0;
 }
 
 unsigned int mbus_read32(void *obj, unsigned int a) {
