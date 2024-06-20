@@ -54,8 +54,8 @@
 #define MISC_DISMAP	0x100	/* disables map (active hi ) */
 #define	MISC_DIAGMB	0x200	/* put multibus into diagnostic mode */
 #define MISC_DIAGPESC	0x400	/* force parity scsi parity error */
-#define	MISC_DIAGPH	0x800	/* force parity error low byte */
-#define MISC_DIAGPL	0x1000	/* force parity error hi byte */
+#define	MISC_DIAGPL	0x800	/* force parity error low byte */
+#define MISC_DIAGPH	0x1000	/* force parity error hi byte */
 #define MISC_SCSIDL	0x2000	/* enable diag latch (ACTIVE LOW) */
 #define MISC_BOOTJOB	0x4000	/* force job's A23 high (ACTIVE LOW ) */
 #define MISC_BOOTDMA	0x8000	/* force dma's A23 high (ACTIVE LOW ) */
@@ -129,7 +129,7 @@ int csr_try_mbus_held(csr_t *csr) {
 	return 1;
 }
 
-void cst_set_access_error(csr_t *csr, int cpu, int type) {
+void csr_set_access_error(csr_t *csr, int cpu, int type) {
 	int v=0;
 	if (cpu==0) {
 		if (type&ACCESS_ERROR_U) v|=ERR_UBE_DMA;
@@ -141,8 +141,15 @@ void cst_set_access_error(csr_t *csr, int cpu, int type) {
 	csr->reg[CSR_I_ERR/2]|=v;
 }
 
+void csr_set_parity_error(csr_t *c, int hl) {
+	c->reg[CSR_I_PERR1/2]&=~((1<<12)|(1<<13));
+	if (hl&2) c->reg[CSR_I_PERR1/2]|=(1<<12);
+	if (hl&1) c->reg[CSR_I_PERR1/2]|=(1<<13);
+}
+
 void csr_write16(void *obj, unsigned int a, unsigned int val) {
 	csr_t *c=(csr_t*)obj;
+	if (a==CSR_I_PERR1) return; //ro
 	if (a==CSR_O_RSEL) {
 		CSR_LOG_DEBUG("csr write16 0x%X (reset sel) val 0x%X\n", a, val);
 	} else if (a==CSR_O_SC_C || a==CSR_O_SC_C+2) {
@@ -167,8 +174,8 @@ void csr_write16(void *obj, unsigned int a, unsigned int val) {
 		if (!(val&MISC_BOOTJOB)) v|=2;
 		emu_set_force_a23(v);
 		v=0;
-		if (val&MISC_DIAGPH) v|=1;
-		if (val&MISC_DIAGPL) v|=2;
+		if (val&MISC_DIAGPL) v|=1;
+		if (val&MISC_DIAGPH) v|=2;
 		emu_set_force_parity_error(v);
 	} else if (a==CSR_O_KILL) { //kill
 		CSR_LOG_DEBUG("csr write16 0x%X (kill) val 0x%X\n", a, val);
@@ -203,7 +210,7 @@ void csr_write8(void *obj, unsigned int a, unsigned int val) {
 
 
 unsigned int csr_read16(void *obj, unsigned int a) {
-	if (a<4) CSR_LOG_WARN("Read from unknown reg %x\n", a);
+	if (a>=2 && a<4) CSR_LOG_WARN("Read from unknown reg %x\n", a);
 	csr_t *c=(csr_t*)obj;
 	int b=scsi_get_bytecount(c->scsi);
 	c->reg[CSR_O_SC_C/2]=b>>16;
@@ -242,7 +249,14 @@ void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 	//note: a has the start of MMIO as base, but RESET_* has the base of CSR,
 	//so we adjust the address here.
 	a=a+0x20;
-	if (a==RESET_CLR_JOBINT) {
+	if (a==RESET_MULTERR) {
+		CSR_LOG_DEBUG("CSR: Reset mbus error\n");
+		c->reg[CSR_O_MISC]&=~MISC_TBUSY;
+		emu_raise_int(INT_VECT_MB_IF_ERR, 0, 0);
+		emu_raise_int(INT_VECT_MB_IF_ERR, 0, 1);
+	} else if (a==RESET_SCSI_PFLG) {
+		emu_raise_int(INT_VECT_SCSI_PARITY, 0, 0);
+	} else if (a==RESET_CLR_JOBINT) {
 		CSR_LOG_DEBUG("CSR: Clear job int\n");
 		c->reg[CSR_O_KILL/2] &= ~KILL_INT_JOB;
 		emu_raise_int(INT_VECT_JOB, 0, 1);
@@ -258,17 +272,27 @@ void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 		CSR_LOG_DEBUG("CSR: Set dma int\n");
 		c->reg[CSR_O_KILL/2] |= KILL_INT_DMA;
 		emu_raise_int(INT_VECT_DMA, INT_LEVEL_DMA, 0);
-	} else if (a==RESET_MULTERR) {
-		CSR_LOG_DEBUG("CSR: Reset mbus error\n");
-		c->reg[CSR_O_MISC]&=~MISC_TBUSY;
+	} else if (a==RESET_CINTJ) {
+		emu_raise_int(INT_VECT_CLOCK, 0, 1);
+	} else if (a==RESET_CINTD) {
+		emu_raise_int(INT_VECT_CLOCK, 0, 0);
 	} else if (a==RESET_JBERR) {
 		CSR_LOG_DEBUG("CSR: Reset job bus error\n");
 		c->reg[CSR_I_ERR/2]&=~(ERR_UBE_JOB|ERR_ABE_JOB);
 	} else if (a==RESET_DBERR) {
 		CSR_LOG_DEBUG("CSR: Reset dma bus error\n");
 		c->reg[CSR_I_ERR/2]&=~(ERR_UBE_DMA|ERR_ABE_DMA);
-	} else if (a==RESET_CINTJ || a==RESET_CINTJ) {
-		//do nothing, our implementation doesn't need this reset.
+	} else if (a==RESET_MPERR) {
+		CSR_LOG_DEBUG("CSR: Reset parity error\n");
+		emu_raise_int(INT_VECT_PARITY_ERR, 0, 0);
+		emu_raise_int(INT_VECT_PARITY_ERR, 0, 1);
+//		c->reg[CSR_I_PERR1/2]&=~((1<<13)|(1<<12));
+	} else if (a==RESET_SWINT) {
+		//not implemented yet
+	} else if (a==RESET_SCSIBERR) {
+		for (int i=0; i<16; i++) {
+			if (i!=4) emu_raise_int(INT_VECT_SCSI_SPURIOUS+i, 0, 0);
+		}
 	} else {
 		CSR_LOG_DEBUG("Unhandled MMIO write 0x%x\n", a);
 	}

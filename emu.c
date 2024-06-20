@@ -278,7 +278,7 @@ static int check_mem_access(unsigned int address, int flags) {
 //		if (address==0x1000) do_tracefile=1;
 //		dump_cpu_state();
 //		dump_callstack();
-		cst_set_access_error(csr, cur_cpu, ACCESS_ERROR_A);
+		csr_set_access_error(csr, cur_cpu, ACCESS_ERROR_A);
 		m68k_pulse_bus_error();
 		return 0;
 	}
@@ -294,24 +294,61 @@ void emu_set_force_a23(int val) {
 int parity_force_error=0;
 
 void emu_set_force_parity_error(int val) {
-	if (parity_force_error!=val) EMU_LOG_INFO("Parity error force %x\n", val);
+	if (parity_force_error!=val) EMU_LOG_DEBUG("Parity error force %x enabled\n", val);
 	parity_force_error=val;
 }
 
+
+
+#define PARITY_ERR_BUF_SZ 8
+#define PARITY_ERR_ACTIVE 0x80000000
+static unsigned int parity_errors[PARITY_ERR_BUF_SZ]={0};
+static unsigned int parity_errors_count=0;
+
 void check_parity_error(unsigned int address, int len) {
-	if (parity_force_error==0) return;
-	if (address>=0x80000) return;
-	EMU_LOG_INFO("Access %x len %x, parity_force_error %x cpu %x\n", address, len, parity_force_error, cur_cpu);
-	int err=0;
-	if (len==1) {
-		if (((address&1)==0) && (parity_force_error&1)) err=1;
-		if (((address&1)==1) && (parity_force_error&2)) err=1;
-	} else {
-		if (parity_force_error) err=1;
+	if (parity_errors_count==0) return;
+	int v=0;
+	for (int a=address; a<address+len; a++) {
+		for (int i=0; i<PARITY_ERR_BUF_SZ; i++) {
+			if (parity_errors[i]==(a|PARITY_ERR_ACTIVE)) {
+				if (a&1) v|=2; else v|=1;
+			}
+		}
 	}
-	if (err) {
-		EMU_LOG_INFO("Raising parity error on addr %x\n", address);
+	if (v) {
+		EMU_LOG_DEBUG("Raising parity error on addr %x\n", address);
 		emu_raise_int(INT_VECT_PARITY_ERR, INT_LEVEL_PARITY_ERR, cur_cpu);
+		csr_set_parity_error(csr, v);
+	}
+}
+
+
+static void handle_write_parity_error(unsigned int address, int len) {
+	if (address>=0x80000) return;
+	if (parity_errors_count==0 && parity_force_error==0) return;
+	for (int a=address; a<address+len; a++) {
+		if (((!(a&1)) && (parity_force_error&1)) ||
+				((a&1) && (parity_force_error&2))) {
+			//Mark as error
+			EMU_LOG_DEBUG("Marking parity error on addr %x\n", a);
+			for (int i=0; i<PARITY_ERR_BUF_SZ; i++) {
+				if (parity_errors[i]==(a|PARITY_ERR_ACTIVE)) break;
+				if (!(parity_errors[i]&PARITY_ERR_ACTIVE)) {
+					parity_errors[i]=a|PARITY_ERR_ACTIVE;
+					parity_errors_count++;
+					break;
+				}
+			}
+		} else {
+			//Clear error
+			for (int i=0; i<PARITY_ERR_BUF_SZ; i++) {
+				if (parity_errors[i]==(a|PARITY_ERR_ACTIVE)) {
+				EMU_LOG_DEBUG("Clearing parity error on addr %x\n", a);
+					parity_errors[i]=0;
+					parity_errors_count--;
+				}
+			}
+		}
 	}
 }
 
@@ -340,21 +377,21 @@ unsigned int m68k_read_memory_8(unsigned int address) {
 void m68k_write_memory_8(unsigned int address, unsigned int value) {
 	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
 	if (!check_mem_access(address, ACCESS_W)) return;
-	check_parity_error(address, 1);
+	handle_write_parity_error(address, 1);
 	write_memory_8(address, value);
 }
 
 void m68k_write_memory_16(unsigned int address, unsigned int value) {
 	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
 	if (!check_mem_access(address, ACCESS_W)) return;
-	check_parity_error(address, 2);
+	handle_write_parity_error(address, 2);
 	write_memory_16(address, value);
 }
 
 void m68k_write_memory_32(unsigned int address, unsigned int value) {
 	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
 	if (!check_mem_access(address, ACCESS_W)) return;
-	check_parity_error(address, 4);
+	handle_write_parity_error(address, 4);
 	write_memory_32(address, value);
 }
 
@@ -535,18 +572,24 @@ int m68k_int_cb(int level) {
 			r=i;
 		}
 	}
-	vectors[cur_cpu][r]=0;
+	if (level==INT_LEVEL_UART) {
+		//perhaps this self-clears?
+		vectors[cur_cpu][r]=0;
+	}
 	raise_highest_int();
-	EMU_LOG_DEBUG("Int ack %x\n", r);
+	EMU_LOG_DEBUG("Int ack level %x cpu %x vect %x\n", level, cur_cpu, r);
 	return r;
 }
 
 int need_raise_highest_int[2]={0};
 
 void emu_raise_int(uint8_t vector, uint8_t level, int cpu) {
-	if (level) EMU_LOG_DEBUG("Interrupt raised: %x\n", vector);
-	vectors[cpu][vector]=level;
-	need_raise_highest_int[cpu]=1;
+	if (vectors[cpu][vector]!=level) {
+		EMU_LOG_DEBUG("Interrupt %s: %x\n", level?"raised":"cleared", vector);
+		vectors[cpu][vector]=level;
+		need_raise_highest_int[cpu]=1;
+		m68k_end_timeslice();
+	}
 }
 
 void emu_raise_rtc_int() {

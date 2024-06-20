@@ -160,6 +160,9 @@ void uart_write8(void *obj, unsigned int addr, unsigned int val) {
 		UART_LOG_DEBUG("uart %s chan %s: baud rate gen 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==REG_VECT) {
 		UART_LOG_DEBUG("uart %s chan %s: vector ctl 0x%X\n", u->name, chan?"B":"A", val);
+		//there's only one vect register, it's mirrored in both channels
+		u->chan[0].regs[a]=val;
+		u->chan[1].regs[a]=val;
 	}
 	u->chan[chan].regs[a]=val;
 	check_ints(u);
@@ -183,13 +186,14 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 		}
 	}
 
+	int ret=u->chan[chan].regs[a];
 	if (a==REG_STAT0) {
 		//D7-0: break, underrun, cts, hunt, dcd, tx buf empty, int pending, rx char avail
 		int r=0;
 		if (u->chan[chan].ticks_to_loopback==0) r|=0x4;
 		if (u->chan[chan].has_char_rcv && u->chan[chan].ticks_to_loopback==0) r|=0x3;
 		UART_LOG_DEBUG("uart %s chan %s: read8 status0 -> %x\n", u->name, chan?"B":"A", addr, r);
-		return r;
+		ret=r;
 	} else if (a==REG_STAT1) {
 		//D7-0: eof, crc err, rx overrun, parity err, res c2, res c1, res c0, all sent
 
@@ -200,7 +204,7 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 		if (u->chan[chan].char_rcv==0x3E) r=0x11;
 
 		UART_LOG_DEBUG("uart %s chan %s: read8 status1 -> %x\n", u->name, chan?"B":"A", addr, r);
-		return r;
+		ret=r;
 	} else if (a==REG_DATA) {
 		if (u->is_console && !is_in_loopback) {
 			UART_LOG_DEBUG("read char %x\n", u->chan[chan].char_rcv);
@@ -208,11 +212,12 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 			UART_LOG_DEBUG("read char %x\n", u->chan[chan].char_rcv);
 		}
 		u->chan[chan].has_char_rcv=0;
-		return u->chan[chan].char_rcv;
+		ret=u->chan[chan].char_rcv;
 	}
 	
 	UART_LOG_DEBUG("uart %s chan %s: read8 %x -> %x\n", u->name, chan?"B":"A", addr, u->chan[chan].regs[addr]);
-	return u->chan[chan].regs[a];
+	check_ints(u);
+	return ret;
 }
 
 

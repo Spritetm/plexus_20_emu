@@ -21,4 +21,7 @@ void csr_raise_error(csr_t *c, int error, unsigned int addr);
 
 #define ACCESS_ERROR_U 1
 #define ACCESS_ERROR_A 2
-void cst_set_access_error(csr_t *csr, int cpu, int type);
+void csr_set_access_error(csr_t *csr, int cpu, int type);
+
+
+void csr_set_parity_error(csr_t *c, int hl);
