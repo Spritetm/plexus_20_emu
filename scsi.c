@@ -4,6 +4,7 @@
 #include "scsi.h"
 #include "emu.h"
 #include "log.h"
+#include "int.h"
 
 // Debug logging
 #define SCSI_LOG(msg_level, format_and_args...) \
@@ -45,16 +46,6 @@ unsigned int scsi_read8(void *obj, unsigned int a) {
 	scsi_t *c=(scsi_t*)obj;
 	return c->buf[a];
 }
-
-//scsi errors go to the DMA cpu.
-#define LEVEL 3
-#define INTVECT_SPURIOUS 0x60
-#define INTVECT_SELECTI 0x61
-#define INTVECT_RESELECT 0x62
-#define INTVECT_PARITY 0x64
-#define INTVECT_POINTER 0x68 //plus message (4), command (2) input (1) flag
-
-
 
 void scsi_set_bytecount(scsi_t *s, int bytecount) {
 	SCSI_LOG_DEBUG("SCSI: Bytecount 0x%X\n", bytecount);
@@ -152,7 +143,7 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 		s->state=STATE_BUS_FREE;
 		if (val&O_ARB) {
 			//Arb succeeds immediately
-			emu_raise_int(INTVECT_SELECTI, LEVEL, 0);
+			emu_raise_int(INT_VECT_SCSI_SELECTI, INT_LEVEL_SCSI, 0);
 		}
 		if (val&O_SCSIREQ) {
 			if (s->diag&SCSI_DIAG_LATCH) SCSI_LOG_DEBUG("Diag latch on!\n");
@@ -167,12 +158,12 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 			if ((s->last_req_reg&O_SCSICD) && (val&O_SCSIMSG)) wanted_flags&=~O_SCSIMSG;
 			if (flag!=wanted_flags) {
 				flag^=wanted_flags;
-				int v=INTVECT_POINTER;
+				int v=INT_VECT_SCSI_POINTER;
 				if ((flag&O_SCSIMSG)==0) v|=0x4;
 				if ((flag&O_SCSICD)==0) v|=0x2;
 				if ((flag&O_SCSIIO)==0) v|=0x1;
 				SCSI_LOG_DEBUG("SCSI: Pointer exception 0x%X. Raising interrupt.\n", flag);
-				emu_raise_int(v, LEVEL, 0);
+				emu_raise_int(v, INT_LEVEL_SCSI, 0);
 				val&=~O_AUTOXFR; //so we start without an error next time
 			} else {
 				if (flag&O_SCSIIO) {
@@ -201,7 +192,7 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 					}
 					val|=I_ACK;
 					if (s->diag & SCSI_DIAG_PARITY) {
-						emu_raise_int(INTVECT_PARITY, LEVEL, 0);
+						emu_raise_int(INT_VECT_SCSI_PARITY, INT_LEVEL_SCSI, 0);
 					}
 				} else {
 					s->buf[3]=emu_read_byte(s->pointer+s->ptr_read_msb);
@@ -219,7 +210,7 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 					}
 					val|=I_ACK;
 					if (s->diag & SCSI_DIAG_PARITY) {
-						emu_raise_int(INTVECT_PARITY, LEVEL, 0);
+						emu_raise_int(INT_VECT_SCSI_PARITY, INT_LEVEL_SCSI, 0);
 					}
 				}
 				s->last_req_reg=val;
@@ -231,9 +222,9 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 		}
 	} else if (val&O_ARB) {
 		//sure, we succeeded arb.
-		emu_raise_int(INTVECT_SELECTI, LEVEL, 0);
+		emu_raise_int(INT_VECT_SCSI_SELECTI, INT_LEVEL_SCSI, 0);
 	} else if (val&O_SELENA) {
-		emu_raise_int(INTVECT_RESELECT, LEVEL, 0);
+		emu_raise_int(INT_VECT_SCSI_RESELECT, INT_LEVEL_SCSI, 0);
 	}
 	s->reg=val;
 }

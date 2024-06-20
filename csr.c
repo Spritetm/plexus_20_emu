@@ -6,6 +6,7 @@
 #include "emu.h"
 #include "log.h"
 #include "scsi.h"
+#include "int.h"
 
 // Debug logging
 #define CSR_LOG(msg_level, format_and_args...) \
@@ -165,6 +166,10 @@ void csr_write16(void *obj, unsigned int a, unsigned int val) {
 		if (!(val&MISC_BOOTDMA)) v|=1;
 		if (!(val&MISC_BOOTJOB)) v|=2;
 		emu_set_force_a23(v);
+		v=0;
+		if (val&MISC_DIAGPH) v|=1;
+		if (val&MISC_DIAGPL) v|=2;
+		emu_set_force_parity_error(v);
 	} else if (a==CSR_O_KILL) { //kill
 		CSR_LOG_DEBUG("csr write16 0x%X (kill) val 0x%X\n", a, val);
 		assert((val&0x40)==0); //we don't support this bit yet but sw doesn't seem to use it
@@ -232,9 +237,6 @@ unsigned int csr_read8(void *obj, unsigned int a) {
 	}
 }
 
-#define INTVECT_DMA 0xc2
-#define INTVECT_JOB 0xc1
-
 void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 	csr_t *c=(csr_t*)obj;
 	//note: a has the start of MMIO as base, but RESET_* has the base of CSR,
@@ -243,19 +245,19 @@ void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 	if (a==RESET_CLR_JOBINT) {
 		CSR_LOG_DEBUG("CSR: Clear job int\n");
 		c->reg[CSR_O_KILL/2] &= ~KILL_INT_JOB;
-		emu_raise_int(INTVECT_JOB, 0, 1);
+		emu_raise_int(INT_VECT_JOB, 0, 1);
 	} else if (a==RESET_SET_JOBINT) {
 		CSR_LOG_DEBUG("CSR: Set job int\n");
 		c->reg[CSR_O_KILL/2] |= KILL_INT_JOB;
-		emu_raise_int(INTVECT_JOB, 4, 1);
+		emu_raise_int(INT_VECT_JOB, INT_LEVEL_JOB, 1);
 	} else if (a==RESET_CLR_DMAINT) {
 		CSR_LOG_DEBUG("CSR: Clear dma int\n");
 		c->reg[CSR_O_KILL/2] &= ~KILL_INT_DMA;
-		emu_raise_int(INTVECT_DMA, 0, 0);
+		emu_raise_int(INT_VECT_DMA, 0, 0);
 	} else if (a==RESET_SET_DMAINT) {
 		CSR_LOG_DEBUG("CSR: Set dma int\n");
 		c->reg[CSR_O_KILL/2] |= KILL_INT_DMA;
-		emu_raise_int(INTVECT_DMA, 2, 0);
+		emu_raise_int(INT_VECT_DMA, INT_LEVEL_DMA, 0);
 	} else if (a==RESET_MULTERR) {
 		CSR_LOG_DEBUG("CSR: Reset mbus error\n");
 		c->reg[CSR_O_MISC]&=~MISC_TBUSY;
@@ -274,7 +276,7 @@ void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 
 void csr_raise_error(csr_t *c, int error, unsigned int addr) {
 	if (error==CSR_ERR_MBUS) {
-		emu_raise_int(0x7F, 1, 1);
+		emu_raise_int(INT_VECT_MB_IF_ERR, INT_LEVEL_MB_IF_ERR, 1);
 		c->reg[CSR_I_MBERR/2]=(addr>>11)&0xfe;
 		if (addr&EMU_MBUS_ERROR_READ) c->reg[CSR_I_MBERR/2]|=0x1;
 	}

@@ -14,6 +14,7 @@
 #include "rtc.h"
 #include "log.h"
 #include "emu.h"
+#include "int.h"
 
 // Debug logging
 #define EMU_LOG(msg_level, format_and_args...) \
@@ -290,15 +291,41 @@ void emu_set_force_a23(int val) {
 	force_a23=val;
 }
 
+int parity_force_error=0;
+
+void emu_set_force_parity_error(int val) {
+	if (parity_force_error!=val) EMU_LOG_INFO("Parity error force %x\n", val);
+	parity_force_error=val;
+}
+
+void check_parity_error(unsigned int address, int len) {
+	if (parity_force_error==0) return;
+	if (address>=0x80000) return;
+	EMU_LOG_INFO("Access %x len %x, parity_force_error %x cpu %x\n", address, len, parity_force_error, cur_cpu);
+	int err=0;
+	if (len==1) {
+		if (((address&1)==0) && (parity_force_error&1)) err=1;
+		if (((address&1)==1) && (parity_force_error&2)) err=1;
+	} else {
+		if (parity_force_error) err=1;
+	}
+	if (err) {
+		EMU_LOG_INFO("Raising parity error on addr %x\n", address);
+		emu_raise_int(INT_VECT_PARITY_ERR, INT_LEVEL_PARITY_ERR, cur_cpu);
+	}
+}
+
 unsigned int m68k_read_memory_32(unsigned int address) {
 	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
 	if (!check_mem_access(address, ACCESS_R)) return 0;
+	check_parity_error(address, 4);
 	return read_memory_32(address);
 }
 
 unsigned int m68k_read_memory_16(unsigned int address) {
 	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
 	if (!check_mem_access(address, ACCESS_R)) return 0;
+	check_parity_error(address, 2);
 	return read_memory_16(address);
 }
 
@@ -306,27 +333,30 @@ unsigned int m68k_read_memory_16(unsigned int address) {
 unsigned int m68k_read_memory_8(unsigned int address) {
 	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
 	if (!check_mem_access(address, ACCESS_R)) return 0;
+	check_parity_error(address, 1);
 	return read_memory_8(address);
 }
 
 void m68k_write_memory_8(unsigned int address, unsigned int value) {
 	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
 	if (!check_mem_access(address, ACCESS_W)) return;
+	check_parity_error(address, 1);
 	write_memory_8(address, value);
 }
 
 void m68k_write_memory_16(unsigned int address, unsigned int value) {
 	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
 	if (!check_mem_access(address, ACCESS_W)) return;
+	check_parity_error(address, 2);
 	write_memory_16(address, value);
 }
 
 void m68k_write_memory_32(unsigned int address, unsigned int value) {
 	if (force_a23 & (1<<cur_cpu)) address|=0x800000;
 	if (!check_mem_access(address, ACCESS_W)) return;
+	check_parity_error(address, 4);
 	write_memory_32(address, value);
 }
-
 
 
 //Used for SCSI DMA transfers as well as mbus transfers.
@@ -514,7 +544,7 @@ int m68k_int_cb(int level) {
 int need_raise_highest_int[2]={0};
 
 void emu_raise_int(uint8_t vector, uint8_t level, int cpu) {
-	EMU_LOG_DEBUG("Interrupt raised: %x\n", vector);
+	if (level) EMU_LOG_DEBUG("Interrupt raised: %x\n", vector);
 	vectors[cpu][vector]=level;
 	need_raise_highest_int[cpu]=1;
 }
@@ -522,8 +552,8 @@ void emu_raise_int(uint8_t vector, uint8_t level, int cpu) {
 void emu_raise_rtc_int() {
 	mem_range_t *r=find_range_by_name("CSR");
 	csr_t *c=(csr_t*)r->obj;
-	if (csr_get_rtc_int_ena(c, 0)) emu_raise_int(0x83, 6, 0);
-	if (csr_get_rtc_int_ena(c, 1)) emu_raise_int(0x83, 6, 1);
+	if (csr_get_rtc_int_ena(c, 0)) emu_raise_int(INT_VECT_CLOCK, INT_LEVEL_CLOCK, 0);
+	if (csr_get_rtc_int_ena(c, 1)) emu_raise_int(INT_VECT_CLOCK, INT_LEVEL_CLOCK, 1);
 }
 
 int old_val;

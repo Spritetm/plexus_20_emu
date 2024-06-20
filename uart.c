@@ -6,6 +6,7 @@
 #include "uart.h"
 #include "emu.h"
 #include "log.h"
+#include "int.h"
 
 #include <termios.h>
 #include <unistd.h>
@@ -72,28 +73,6 @@ void uart_console_printc(char val) {
 
 //The UARTs are Mostek MK68564 chips.
 
-typedef struct {
-	uint8_t regs[32];
-	uint8_t char_rcv;
-	uint8_t has_char_rcv;
-	uint8_t ticks_to_loopback;
-} chan_t;
-
-struct uart_t {
-	char *name;
-	int is_console;
-	chan_t chan[2];
-};
-
-uart_t *uart_new(const char *name, int is_console) {
-	uart_t *u=calloc(sizeof(uart_t), 1);
-	u->name=strdup(name);
-	u->is_console=is_console;
-
-	if (is_console) uart_set_console_raw_mode();
-
-	return u;
-}
 
 #define REG_CMD 0
 #define REG_MODECTL 1
@@ -109,22 +88,63 @@ uart_t *uart_new(const char *name, int is_console) {
 #define REG_BRG 11
 #define REG_VECT 12
 
+
+typedef struct {
+	uint8_t regs[32];
+	uint8_t char_rcv;
+	uint8_t has_char_rcv;
+	uint8_t ticks_to_loopback;
+} chan_t;
+
+struct uart_t {
+	char *name;
+	int is_console;
+	chan_t chan[2];
+	int int_raised;
+};
+
+uart_t *uart_new(const char *name, int is_console) {
+	uart_t *u=calloc(sizeof(uart_t), 1);
+	u->name=strdup(name);
+	u->is_console=is_console;
+
+	if (is_console) uart_set_console_raw_mode();
+
+	return u;
+}
+
+static void check_ints(uart_t *u) {
+	int need_int=0;
+	for (int c=0; c<2; c++) {
+		if (u->chan[c].regs[REG_INTCTL] & 0x18) {
+			if (u->chan[c].has_char_rcv && u->chan[c].ticks_to_loopback==0) {
+				need_int=1;
+			}
+		}
+	}
+	if (need_int!=u->int_raised) {
+		emu_raise_int(u->chan[0].regs[REG_VECT], need_int?INT_LEVEL_UART:0, 0);
+		u->int_raised=need_int;
+	}
+}
+
+
 void uart_write8(void *obj, unsigned int addr, unsigned int val) {
 	uart_t *u=(uart_t*)obj;
 	addr=addr/2; //8-bit thing on 16-bit bus
 	int chan=(addr>>4)&1;
 	int a=(addr&0xf);
-	if (a==0) {
+	if (a==REG_CMD) {
 		UART_LOG_DEBUG("uart %s chan %s: cmd 0x%X\n", u->name, chan?"B":"A", val);
-	} else if (a==1) {
+	} else if (a==REG_MODECTL) {
 		UART_LOG_DEBUG("uart %s chan %s: mode 0x%X\n", u->name, chan?"B":"A", val);
-	} else if (a==2) {
+	} else if (a==REG_INTCTL) {
 		UART_LOG_DEBUG("uart %s chan %s: int ctl 0x%X\n", u->name, chan?"B":"A", val);
-	} else if (a==5) {
+	} else if (a==REG_RCVCTL) {
 		UART_LOG_DEBUG("uart %s chan %s: rcv ctl 0x%X\n", u->name, chan?"B":"A", val);
-	} else if (a==6) {
+	} else if (a==REG_XMTCTL) {
 		UART_LOG_DEBUG("uart %s chan %s: tx ctl 0x%X\n", u->name, chan?"B":"A", val);
-	} else if (a==9) {
+	} else if (a==REG_DATA) {
 		UART_LOG_DEBUG("uart %s chan %s: data reg 0x%X\n", u->name, chan?"B":"A", val);
 		if (u->chan[chan].regs[0]&1) { //loop mode
 			u->chan[chan].has_char_rcv=1;
@@ -134,14 +154,15 @@ void uart_write8(void *obj, unsigned int addr, unsigned int val) {
 		} else {
 			if (u->is_console) uart_console_printc(val);
 		}
-	} else if (a==10) {
+	} else if (a==REG_TC) {
 		UART_LOG_DEBUG("uart %s chan %s: time const reg 0x%X\n", u->name, chan?"B":"A", val);
-	} else if (a==11) {
+	} else if (a==REG_BRG) {
 		UART_LOG_DEBUG("uart %s chan %s: baud rate gen 0x%X\n", u->name, chan?"B":"A", val);
-	} else if (a==12) {
+	} else if (a==REG_VECT) {
 		UART_LOG_DEBUG("uart %s chan %s: vector ctl 0x%X\n", u->name, chan?"B":"A", val);
 	}
 	u->chan[chan].regs[a]=val;
+	check_ints(u);
 }
 
 unsigned int uart_read8(void *obj, unsigned int addr) {
@@ -162,14 +183,14 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 		}
 	}
 
-	if (a==7) {
+	if (a==REG_STAT0) {
 		//D7-0: break, underrun, cts, hunt, dcd, tx buf empty, int pending, rx char avail
 		int r=0;
 		if (u->chan[chan].ticks_to_loopback==0) r|=0x4;
 		if (u->chan[chan].has_char_rcv && u->chan[chan].ticks_to_loopback==0) r|=0x3;
 		UART_LOG_DEBUG("uart %s chan %s: read8 status0 -> %x\n", u->name, chan?"B":"A", addr, r);
 		return r;
-	} else if (a==8) {
+	} else if (a==REG_STAT1) {
 		//D7-0: eof, crc err, rx overrun, parity err, res c2, res c1, res c0, all sent
 
 		//The diags only run two tests on this, and either expect 0x41 or 0x11 here. We simply
@@ -180,7 +201,7 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 
 		UART_LOG_DEBUG("uart %s chan %s: read8 status1 -> %x\n", u->name, chan?"B":"A", addr, r);
 		return r;
-	} else if (a==9) {
+	} else if (a==REG_DATA) {
 		if (u->is_console && !is_in_loopback) {
 			UART_LOG_DEBUG("read char %x\n", u->chan[chan].char_rcv);
 		} else {
@@ -194,6 +215,7 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 	return u->chan[chan].regs[a];
 }
 
+
 void uart_tick(uart_t *u, int ticklen_us) {
 	for (int c=0; c<2; c++) {
 		if (u->chan[c].has_char_rcv && u->chan[c].ticks_to_loopback) {
@@ -201,12 +223,10 @@ void uart_tick(uart_t *u, int ticklen_us) {
 				u->chan[c].ticks_to_loopback-=ticklen_us;
 			} else {
 				u->chan[c].ticks_to_loopback=0;
-				if (u->chan[c].regs[REG_INTCTL] & 0x18) {
-					emu_raise_int(u->chan[c].regs[REG_VECT], 5, 0);
-				}
 			}
 		}
 	}
+	check_ints(u);
 }
 
 
