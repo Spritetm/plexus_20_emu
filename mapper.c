@@ -71,8 +71,11 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags)
 }
 
 int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags) {
-	//we only check RAM
-	if (a>=0x800000) return 1;
+	if (a>=0x800000) {
+		//Anything except RAM does not go through the mapper, but is only
+		//accessible in system mode.
+		return (access_flags&ACCESS_SYSTEM);
+	}
 	//Map virtual page to phyical page.
 	int p=a>>12; //4K pages
 	if (p>=2048) {
