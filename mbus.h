@@ -4,3 +4,5 @@ void mbus_write32(void *obj, unsigned int a, unsigned int val);
 unsigned int mbus_read8(void *obj, unsigned int a);
 unsigned int mbus_read16(void *obj, unsigned int a);
 unsigned int mbus_read32(void *obj, unsigned int a);
+void mbus_io_write(void *obj, unsigned int a, unsigned int val);
+unsigned int mbus_io_read(void *obj, unsigned int a);

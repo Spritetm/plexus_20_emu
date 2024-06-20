@@ -21,6 +21,7 @@ void csr_raise_error(csr_t *c, int error, unsigned int addr);
 
 #define ACCESS_ERROR_U 1
 #define ACCESS_ERROR_A 2
+#define ACCESS_ERROR_MBTO 3
 void csr_set_access_error(csr_t *csr, int cpu, int type);
 
 

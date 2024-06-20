@@ -138,6 +138,7 @@ void csr_set_access_error(csr_t *csr, int cpu, int type) {
 		if (type&ACCESS_ERROR_U) v|=ERR_UBE_JOB;
 		if (type&ACCESS_ERROR_A) v|=ERR_ABE_JOB;
 	}
+	if (type&ACCESS_ERROR_MBTO) v|=ERR_MBTO;
 	csr->reg[CSR_I_ERR/2]|=v;
 }
 
@@ -177,6 +178,7 @@ void csr_write16(void *obj, unsigned int a, unsigned int val) {
 		if (val&MISC_DIAGPL) v|=1;
 		if (val&MISC_DIAGPH) v|=2;
 		emu_set_force_parity_error(v);
+		emu_set_mb_diag(val&MISC_DIAGMB);
 	} else if (a==CSR_O_KILL) { //kill
 		CSR_LOG_DEBUG("csr write16 0x%X (kill) val 0x%X\n", a, val);
 		assert((val&0x40)==0); //we don't support this bit yet but sw doesn't seem to use it
@@ -210,7 +212,6 @@ void csr_write8(void *obj, unsigned int a, unsigned int val) {
 
 
 unsigned int csr_read16(void *obj, unsigned int a) {
-	if (a>=2 && a<4) CSR_LOG_WARN("Read from unknown reg %x\n", a);
 	csr_t *c=(csr_t*)obj;
 	int b=scsi_get_bytecount(c->scsi);
 	c->reg[CSR_O_SC_C/2]=b>>16;

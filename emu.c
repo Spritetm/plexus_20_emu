@@ -32,7 +32,9 @@ int do_tracefile=0;
 
 int insn_id=0;
 
-int cur_cpu;
+int cur_cpu=0;
+
+unsigned int fc_bits=0;
 
 mapper_t *mapper;
 csr_t *csr;
@@ -40,10 +42,13 @@ csr_t *csr;
 int32_t callstack[2][8192];
 int callstack_ptr[2]={0};
 
+#define FLAG_USR_OK 1
+
 struct mem_range_t {
 	const char *name;
 	uint32_t offset;
 	uint32_t size;
+	int flags;
 	void *obj;
 	read_cb read8;
 	read_cb read16;
@@ -54,8 +59,8 @@ struct mem_range_t {
 };
 
 static mem_range_t memory[]={
-//	{.name="RAM",     .offset=0, .size=0x200000}, //only 2MiB of RAM
-	{.name="RAM",     .offset=0, .size=0x800000}, //fully decked out with 8MiB of RAM
+//	{.name="RAM",     .offset=0, .size=0x200000, .flags=FLAG_USR_OK}, //only 2MiB of RAM
+	{.name="RAM",     .offset=0, .size=0x800000, .flags=FLAG_USR_OK}, //fully decked out with 8MiB of RAM
 	{.name="MAPRAM",  .offset=0, .size=0}, //MMU-mapped RAM
 	{.name="U17",     .offset=0x800000, .size=0x8000}, //used to be U19
 	{.name="U15",     .offset=0x808000, .size=0x8000}, //used to be U17
@@ -125,6 +130,14 @@ static mem_range_t *find_range_by_addr(unsigned int addr) {
 	return NULL;
 }
 
+
+unsigned int nop_read(void *obj, unsigned int a) {
+	return 0;
+}
+
+void nop_write(void *obj, unsigned int a, unsigned int val) {
+}
+
 void setup_ram(const char *name) {
 	mem_range_t *m=find_range_by_name(name);
 	assert(m);
@@ -146,7 +159,23 @@ void setup_rom(const char *name, const char *filename) {
 	m->read8=ram_read8;
 	m->read16=ram_read16;
 	m->read32=ram_read32;
+	m->write8=nop_write;
+	m->write16=nop_write;
+	m->write32=nop_write;
 	EMU_LOG_INFO("Loaded ROM '%s' into section '%s' at addr %x\n", filename, name, m->offset);
+}
+
+static int check_can_access(mem_range_t *m, unsigned int address) {
+	int ret=1;
+	if (cur_cpu==1 && ((fc_bits&4)==0) && ((m->flags&FLAG_USR_OK)==0)) {
+		EMU_LOG_INFO("Faulting CPU %d for accessing non-RAM address %X in user mode (fc=%x)\n", cur_cpu, address, fc_bits);
+		ret=0;
+	}
+	if (!ret) {
+		csr_set_access_error(csr, cur_cpu, ACCESS_ERROR_A);
+		m68k_pulse_bus_error();
+	}
+	return ret;
 }
 
 #define PRINT_MEMREAD 0
@@ -155,8 +184,8 @@ static unsigned int read_memory_32(unsigned int address) {
 	if (address==0) EMU_LOG_DEBUG("read addr 0\n");
 	mem_range_t *m=find_range_by_addr(address);
 	//HACK! If this is set, diags get more verbose
-	if (address==0xC00644) return 1;
-	if (address==0xC006de) return 1;
+//	if (address==0xC00644) return 1;
+//	if (address==0xC006de) return 1;
 	if (!m) {
 		EMU_LOG_INFO("Read32 from unmapped addr %08X\n", address);
 		dump_cpu_state();
@@ -170,6 +199,7 @@ static unsigned int read_memory_32(unsigned int address) {
 #if PRINT_MEMREAD
 	EMU_LOG_INFO("read32 %s %x -> %x\n", m->name, address, m->read32(m->obj, address - m->offset));
 #endif
+	if (!check_can_access(m, address)) return 0;
 	return m->read32(m->obj, address - m->offset);
 }
 
@@ -188,6 +218,7 @@ static unsigned int read_memory_16(unsigned int address) {
 #if PRINT_MEMREAD
 	EMU_LOG_INFO("read16 %s %x -> %x\n", m->name, address, m->read16(m->obj, address - m->offset));
 #endif
+	if (!check_can_access(m, address)) return 0;
 	return m->read16(m->obj, address - m->offset);
 }
 
@@ -206,6 +237,7 @@ static unsigned int read_memory_8(unsigned int address) {
 #if PRINT_MEMREAD
 	EMU_LOG_INFO("read8 %s %x -> %x\n", m->name, address, m->read8(m->obj, address - m->offset));
 #endif
+	if (!check_can_access(m, address)) return 0;
 	return m->read8(m->obj, address - m->offset);
 }
 
@@ -221,6 +253,7 @@ static void write_memory_8(unsigned int address, unsigned int value) {
 		EMU_LOG_INFO("No write8 implementation for %s, addr 0x%08X, data 0x%X\n", m->name, address, value);
 		return;
 	}
+	if (!check_can_access(m, address)) return;
 	m->write8(m->obj, address - m->offset, value);
 }
 
@@ -237,6 +270,7 @@ static void write_memory_16(unsigned int address, unsigned int value) {
 		dump_cpu_state();
 		return;
 	}
+	if (!check_can_access(m, address)) return;
 	m->write16(m->obj, address - m->offset, value);
 }
 
@@ -253,10 +287,9 @@ static void write_memory_32(unsigned int address, unsigned int value) {
 		dump_cpu_state();
 		return;
 	}
+	if (!check_can_access(m, address)) return;
 	m->write32(m->obj, address - m->offset, value);
 }
-
-unsigned int fc_bits=0;
 
 void emu_set_cur_mapid(uint8_t id) {
 	mapper_set_mapid(mapper, id);
@@ -404,7 +437,7 @@ int emu_read_byte(int addr) {
 }
 
 int emu_write_byte(int addr, int val) {
-	int access_flags=ACCESS_R|ACCESS_SYSTEM;
+	int access_flags=ACCESS_W|ACCESS_SYSTEM;
 	if (!mapper_access_allowed(mapper, addr, access_flags)) return 0;
 	write_memory_8(addr, val);
 	return -1;
@@ -412,8 +445,24 @@ int emu_write_byte(int addr, int val) {
 
 void emu_mbus_error(unsigned int addr) {
 	mem_range_t *r=find_range_by_name("CSR");
-	csr_t *c=(csr_t*)r->obj;
-	csr_raise_error(c, CSR_ERR_MBUS, addr);
+	if (addr&EMU_MBUS_ERROR_TIMEOUT) {
+		csr_set_access_error(csr, 1, ACCESS_ERROR_MBTO);
+		emu_bus_error();
+	} else {
+		csr_t *c=(csr_t*)r->obj;
+		csr_raise_error(c, CSR_ERR_MBUS, addr);
+	}
+}
+
+int mbus_diag_en=0;
+
+void emu_set_mb_diag(int ena) {
+	if (mbus_diag_en!=ena) EMU_LOG_DEBUG("MB DIAG %d\n", ena);
+	mbus_diag_en=ena;
+}
+
+int emu_get_mb_diag() {
+	return mbus_diag_en;
 }
 
 uart_t *setup_uart(const char *name, int is_console) {
@@ -423,13 +472,6 @@ uart_t *setup_uart(const char *name, int is_console) {
 	m->write8=uart_write8;
 	m->read8=uart_read8;
 	return u;
-}
-
-unsigned int nop_read(void *obj, unsigned int a) {
-	return 0;
-}
-
-void nop_write(void *obj, unsigned int a, unsigned int val) {
 }
 
 void setup_scsi(const char *name) {
@@ -510,9 +552,9 @@ void emu_enable_mapper(int do_enable) {
 	}
 }
 
-//Note this does not work as mbus accesses go through the mapper.
-void setup_mbus(const char *name) {
+void setup_mbus(const char *name, const char *ioname) {
 	mem_range_t *m=find_range_by_name(name);
+	mem_range_t *io=find_range_by_name(ioname);
 	//note mbus needs no obj
 	m->read8=mbus_read8;
 	m->read16=mbus_read16;
@@ -520,6 +562,12 @@ void setup_mbus(const char *name) {
 	m->write8=mbus_write8;
 	m->write16=mbus_write16;
 	m->write32=mbus_write32;
+	io->read8=mbus_io_read;
+	io->read16=mbus_io_read;
+	io->read32=mbus_io_read;
+	io->write8=mbus_io_write;
+	io->write16=mbus_io_write;
+	io->write32=mbus_io_write;
 }
 
 
@@ -651,8 +699,7 @@ void emu_start(emu_cfg_t *cfg) {
 	setup_scsi("SCSIBUF");
 	csr=setup_csr("CSR", "MMIO_WR", "SCSIBUF");
 	mapper=setup_mapper("MAPPER", "MAPRAM", "RAM");
-	setup_nop("MBUSIO");
-	setup_mbus("MBUSMEM");
+	setup_mbus("MBUSMEM", "MBUSIO");
 	rtc_t *rtc=setup_rtc("RTC");
 
 	void *cpuctx[2];

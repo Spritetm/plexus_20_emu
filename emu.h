@@ -19,6 +19,8 @@ void emu_bus_error();
 void emu_set_cur_mapid(uint8_t mapid);
 void emu_set_force_a23(int val);
 void emu_set_force_parity_error(int val);
+void emu_set_mb_diag(int ena);
+int emu_get_mb_diag();
 
 typedef struct {
 	const char *u15_rom;
@@ -28,4 +30,5 @@ typedef struct {
 void emu_start(emu_cfg_t *cfg);
 
 #define EMU_MBUS_ERROR_READ 0x80000000
+#define EMU_MBUS_ERROR_TIMEOUT 0x40000000
 void emu_mbus_error(unsigned int addr);
