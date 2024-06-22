@@ -155,7 +155,7 @@ int do_map(mapper_t *m, unsigned int a, unsigned int is_write) {
 	int phys=(a&0xFFF)|(phys_p<<12);
 	phys&=((8*1024*1024)-1);
 //	assert(phys<8*1024*1024);
-	MAPPER_LOG_DEBUG("do_map %s 0x%x to 0x%x, virt page %d phys page %d\n", m->sysmode?"sys":"usr", a, phys, p, phys_p);
+//	MAPPER_LOG_DEBUG("do_map %s 0x%x to 0x%x, virt page %d phys page %d\n", m->sysmode?"sys":"usr", a, phys, p, phys_p);
 	return phys;
 }
 

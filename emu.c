@@ -656,7 +656,7 @@ int old_val;
 
 void m68k_trace_cb(unsigned int pc) {
 	insn_id++;
-	if (pc==0x80bbd4) {
+	if (pc==0x80bbd4 || pc==0xc0245C) {
 		EMU_LOG_INFO("Scsi err, callstack:\n");
 		dump_callstack();
 	}
@@ -691,6 +691,8 @@ int emu_get_cur_cpu() {
 }
 
 void emu_bus_error() {
+	EMU_LOG_INFO("Bus error on CPU %d\n", cur_cpu);
+	dump_cpu_state();
 	m68k_pulse_bus_error();
 }
 

@@ -272,30 +272,31 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 	Note for non-diag scsi: State is the old state, we set things up to go into the new state.
 	If required, the interrupt we set up will poke the CPU after a timeout.
 */
-	} else if ((val&O_ARB) && (s->state==STATE_BUS_FREE ||s->state==STATE_MSGIN)) {
+	} else if ((val&O_ARB) && (s->state==STATE_BUS_FREE || s->state==STATE_MSGIN)) {
 		//sure, we succeeded arb.
-		s->state=STATE_SELECT;
 		int db=s->buf[0]&(0xff-8); //3 is our own scsi id
 		for (int i=0; i<8; i++) {
 			if (db&1) s->selected=i;
 			db>>=1;
 		}
-		SCSI_LOG_INFO("Selected SCSI ID %d\n", s->selected);
-		s->op_timeout_us=500;
+		if (s->dev[s->selected]) {
+			SCSI_LOG_DEBUG("Selected SCSI ID %d\n", s->selected);
+			s->state=STATE_SELECT;
+			s->op_timeout_us=500;
+		}
 	} else if ((val&O_SELENA) && s->state==STATE_SELECT) {
-//		emu_raise_int(INT_VECT_SCSI_RESELECT, INT_LEVEL_SCSI, 0);
 		s->state=STATE_RESELECT;
-		s->op_timeout_us=500;
+		s->op_timeout_us=50;
 	} else if (((val&O_AUTOXFR) && (val&O_CDPTR)) && (s->state==STATE_SELECT || s->state==STATE_RESELECT)) {
 //		dump_cpu_state();
 //		assert(s->bytecount<=10);
 		if (s->bytecount>10) s->bytecount=10;
-		SCSI_LOG_INFO("SCSI CMD: ");
+		SCSI_LOG_DEBUG("SCSI CMD: ");
 		for (int i=0; i<s->bytecount; i++) {
 			s->cmd[i]=emu_read_byte(s->pointer++);
-			SCSI_LOG_INFO("%02X ", s->cmd[i]);
+			SCSI_LOG_DEBUG("%02X ", s->cmd[i]);
 		}
-		SCSI_LOG_INFO("\n");
+		SCSI_LOG_DEBUG("\n");
 		int dir=0;
 		if (s->dev[s->selected]) {
 			dir=s->dev[s->selected]->handle_cmd(s->dev[s->selected], s->cmd, s->bytecount);
@@ -312,48 +313,56 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 			val|=O_SCSICD;
 			val&=~(O_SCSIIO);
 			s->state=STATE_CMD_DOUT;
-		} else {
+		} else {//no data
 			int status=s->dev[s->selected]->handle_status(s->dev[s->selected]);
 			if (s->bytecount) {
 				emu_write_byte(s->pointer++, status);
 				s->bytecount--;
 			}
 			s->buf[2]=0; s->buf[3]=status;
-			SCSI_LOG_INFO("SCSI: Device returns status %d\n", status);
+			SCSI_LOG_DEBUG("SCSI: Device returns status %d\n", status);
 			val|=O_SCSIIO|O_SCSICD;
 			s->state=STATE_STATUS;
 		}
 		s->op_timeout_us=50;
 	} else if (((val&O_AUTOXFR) && (val&O_IOPTR)) && (s->state==STATE_CMD_DIN)) {
 		//Plexus has set up the pointers to receive the incoming data.
-		int len=s->dev[s->selected]->handle_data_in(s->dev[s->selected], s->databuf, s->bytecount);
-		SCSI_LOG_INFO("SCSI: Data from dev: ");
+		int len=0;
+		if (s->dev[s->selected]) {
+			len=s->dev[s->selected]->handle_data_in(s->dev[s->selected], s->databuf, s->bytecount);
+		}
+		SCSI_LOG_DEBUG("SCSI: Data from dev: ");
 		for (int i=0; i<len; i++) {
-			SCSI_LOG_INFO("%02X ", s->databuf[i]);
+			SCSI_LOG_DEBUG("%02X ", s->databuf[i]);
 			emu_write_byte(s->pointer++, s->databuf[i]);
 			s->bytecount--;
 		}
-		SCSI_LOG_INFO("\n");
+		SCSI_LOG_DEBUG("\n");
 		//Next state sets us up for status.
-		val|=O_SCSICD|O_SCSIIO|O_CDPTR;
-		val&=~O_IOPTR;
+		//(AUTO, REQ, S_DRAM and CDPTR need to be set here)
+		val|=O_SCSICD|O_SCSIIO|O_CDPTR|O_SRAM;
+//		val&=~O_IOPTR;
+		int status=1;
+		if (s->dev[s->selected]) {
+			status=s->dev[s->selected]->handle_status(s->dev[s->selected]);
+		}
+		s->buf[2]=0; s->buf[3]=status;
+		SCSI_LOG_DEBUG("SCSI: Device returns status %d\n", status);
 		s->state=STATE_CMD_DIN_RCV;
 		s->op_timeout_us=50;
-		int status=s->dev[s->selected]->handle_status(s->dev[s->selected]);
-		s->buf[2]=0; s->buf[3]=s;
-		SCSI_LOG_INFO("SCSI: Device returns status %d\n", status);
 	} else if ((val&O_AUTOXFR) && (s->state==STATE_CMD_DIN_RCV)) {
 		val|=O_SCSIIO|O_SCSICD|O_CDPTR;
 		val&=~O_IOPTR;
 		s->state=STATE_STATUS;
 	} else if ((val&O_AUTOXFR) && (s->state==STATE_STATUS)) {
 		s->op_timeout_us=50000;
-		val|=O_SCSIIO|I_MSG;
+		val|=O_SCSIIO|I_MSG|O_SRAM;
 		val&=~O_SCSICD;
-//		val^=I_ACK;
 		//should go to S_M_I
 		val&=~I_BSY;
 		s->state=STATE_MSGIN;
+	} else if ((val&O_AUTOXFR) && (s->state==STATE_CMD_DOUT)) {
+		//todo
 	} else if ((val&O_AUTOXFR) && (s->state==STATE_MSGIN)) {
 		val&=~(I_REQ|I_ACK|I_IO|I_CD|I_MSG|I_BSY);
 //		val|=I_ACK;
@@ -365,14 +374,14 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 
 	if (s->state==STATE_MSGIN) {
 		val&=~I_BSY; 
-	} else if (s->state!=STATE_BUS_FREE) {
+	} else if (s->state!=STATE_BUS_FREE && (s->dev[s->selected])) {
 		if (val&I_ACK) val&=~(I_REQ); else val|=I_REQ;
 		val|=I_BSY; 
 	} else {
 		val&=~(I_REQ);
 		val&=~I_BSY;
 	}
-	if (oldstate!=s->state) SCSI_LOG_NOTICE("Changed SCSI status %s->%s\n", state_str[oldstate], state_str[s->state]);
+	if (oldstate!=s->state) SCSI_LOG_DEBUG("Changed SCSI status %s->%s\n", state_str[oldstate], state_str[s->state]);
 
 	s->reg=val;
 	handle_interrupts(s);
@@ -421,7 +430,7 @@ static void handle_interrupts(scsi_t *s) {
 	scsi_pointer_int(IV_INPUT|IV_CMD, (int_to_sel==STATE_STATUS) || (int_to_sel==STATE_CMD_DIN_RCV));
 	scsi_pointer_int(IV_INPUT|IV_MSG, (int_to_sel==STATE_MSGIN));
 	if (int_to_sel!=old_int_to_sel) {
-		if (int_to_sel>=0) SCSI_LOG_INFO("SCSI: select int for state %s\n", state_str[int_to_sel]);
+		if (int_to_sel>=0) SCSI_LOG_DEBUG("SCSI: select int for state %s\n", state_str[int_to_sel]);
 	}
 	old_int_to_sel=int_to_sel;
 }

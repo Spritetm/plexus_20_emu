@@ -37,6 +37,8 @@ static int hd_handle_cmd(scsi_dev_t *dev, uint8_t *cd, int len) {
 		return SCSI_DEV_DATA_IN;
 	} else if (cd[0]==8) {
 		return SCSI_DEV_DATA_IN;
+	} else if (cd[0]==0x15) { //mode select
+		return SCSI_DEV_DATA_OUT;
 	} else if (cd[0]==0xC2) {
 		//omti config cmd?
 		return SCSI_DEV_DATA_IN;
@@ -63,14 +65,16 @@ int hd_handle_data_in(scsi_dev_t *dev, uint8_t *msg, int buflen) {
 		if (blen>buflen) blen=buflen;
 		fseek(hd->hdfile, lba*512, SEEK_SET);
 		fread(msg, blen, 1, hd->hdfile);
-		printf("Read %d bytes from LB %d\n", blen, lba);
+//		printf("Read %d bytes from LB %d\n", blen, lba);
 		return blen;
 	}
 }
 
 static void hd_handle_data_out(scsi_dev_t *dev, uint8_t *msg, int len) {
 	scsi_hd_t *hd=(scsi_hd_t*)dev;
-
+	if (hd->cmd[0]==0x15) { //mode select
+		//ignore
+	}
 }
 
 static int hd_handle_status(scsi_dev_t *dev) {
