@@ -14,7 +14,7 @@ typedef struct {
 
 
 static const uint8_t sense[]={
-	0x00+0x70, //error code
+	0x80+0x00, //error code
 	0, //sense key
 	0,0,0, //additional information
 	0, //additional sense length
@@ -29,10 +29,21 @@ static int hd_handle_cmd(scsi_dev_t *dev, uint8_t *cd, int len) {
 	scsi_hd_t *hd=(scsi_hd_t*)dev;
 	if (len<6 || len>10) return SCSI_DEV_ERR;
 	memcpy(hd->cmd, cd, len);
-	if (cd[0]==0) return SCSI_DEV_STATUS;
-	if (cd[0]==1) return SCSI_DEV_STATUS;
-	if (cd[0]==3) return SCSI_DEV_DATA_IN;
-	if (cd[0]==8) return SCSI_DEV_DATA_IN;
+	if (cd[0]==0) {
+		return SCSI_DEV_STATUS;
+	} else if (cd[0]==1) {
+		return SCSI_DEV_STATUS;
+	} else if (cd[0]==3) {
+		return SCSI_DEV_DATA_IN;
+	} else if (cd[0]==8) {
+		return SCSI_DEV_DATA_IN;
+	} else if (cd[0]==0xC2) {
+		//omti config cmd?
+		return SCSI_DEV_DATA_IN;
+	} else {
+		printf("hd: unsupported cmd %d\n", cd[0]);
+		exit(1);
+	}
 	return SCSI_DEV_DATA_IN;
 }
 
