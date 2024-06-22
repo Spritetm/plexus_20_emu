@@ -116,6 +116,24 @@ unsigned int mapper_read16(void *obj, unsigned int a) {
 	}
 }
 
+void mapper_write8(void *obj, unsigned int a, unsigned int val) {
+	int v=mapper_read16(obj, a&~1);
+	if (a&1) {
+		v=(v&0xFF00)|val;
+	} else {
+		v=(v&0xFF)|(val<<8);
+	}
+}
+
+unsigned int mapper_read8(void *obj, unsigned int a) {
+	int v=mapper_read16(obj, a&~1);
+	if (a&1) {
+		return v&0xff;
+	} else {
+		return v>>8;
+	}
+}
+
 unsigned int mapper_read32(void *obj, unsigned int a) {
 	return (mapper_read16(obj,a)<<16)+mapper_read16(obj, a+2);
 }

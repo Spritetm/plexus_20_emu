@@ -10,6 +10,7 @@
 #include "csr.h"
 #include "mapper.h"
 #include "scsi.h"
+#include "scsi_dev_hd.h"
 #include "mbus.h"
 #include "rtc.h"
 #include "log.h"
@@ -184,8 +185,8 @@ static unsigned int read_memory_32(unsigned int address) {
 	if (address==0) EMU_LOG_DEBUG("read addr 0\n");
 	mem_range_t *m=find_range_by_addr(address);
 	//HACK! If this is set, diags get more verbose
-//	if (address==0xC00644) return 1;
-//	if (address==0xC006de) return 1;
+//	if (address==0xC00644) return 1; //output 'expected' diag lines
+//	if (address==0xC006de) return 1; //output PC of next subtest
 	if (!m) {
 		EMU_LOG_INFO("Read32 from unmapped addr %08X\n", address);
 		dump_cpu_state();
@@ -474,13 +475,15 @@ uart_t *setup_uart(const char *name, int is_console) {
 	return u;
 }
 
-void setup_scsi(const char *name) {
+scsi_t *setup_scsi(const char *name) {
 	mem_range_t *m=find_range_by_name(name);
-	m->obj=scsi_new();
+	scsi_t *r=scsi_new();
+	m->obj=r;
 	m->write8=scsi_write8;
 	m->write16=scsi_write16;
 	m->read16=scsi_read16;
 	m->read8=scsi_read8;
+	return r;
 }
 
 rtc_t *setup_rtc(const char *name) {
@@ -520,8 +523,10 @@ mapper_t *setup_mapper(const char *name, const char *mapram, const char *physram
 	m->obj=map;
 	m->write32=mapper_write32;
 	m->write16=mapper_write16;
+	m->write8=mapper_write8;
 	m->read32=mapper_read32;
 	m->read16=mapper_read16;
+	m->read8=mapper_read8;
 
 	mr->obj=map;
 	mr->read8=mapper_ram_read8;
@@ -651,6 +656,11 @@ int old_val;
 
 void m68k_trace_cb(unsigned int pc) {
 	insn_id++;
+	if (pc==0x80bbd4) {
+		EMU_LOG_INFO("Scsi err, callstack:\n");
+		dump_callstack();
+	}
+
 	//note: pc already is advanced to the next insn when this is called
 	//but ir is not
 	static unsigned int prev_pc=0;
@@ -667,7 +677,7 @@ void m68k_trace_cb(unsigned int pc) {
 
 
 static void watch_write(unsigned int addr, unsigned int val, int len) {
-	if (addr/4==-1) {
+	if (0 && addr/4==0xC039F8/4) {
 		dump_callstack();
 	} else {
 		return;
@@ -696,7 +706,9 @@ void emu_start(emu_cfg_t *cfg) {
 	uart[1]=setup_uart("UART_B", 0);
 	uart[2]=setup_uart("UART_C", 0);
 	uart[3]=setup_uart("UART_D", 0);
-	setup_scsi("SCSIBUF");
+	scsi_t *scsi=setup_scsi("SCSIBUF");
+	scsi_dev_t *hd1=scsi_dev_hd_new(cfg->hd0img);
+	scsi_add_dev(scsi, hd1, 0);
 	csr=setup_csr("CSR", "MMIO_WR", "SCSIBUF");
 	mapper=setup_mapper("MAPPER", "MAPRAM", "RAM");
 	setup_mbus("MBUSMEM", "MBUSIO");
@@ -745,6 +757,7 @@ void emu_start(emu_cfg_t *cfg) {
 		m68k_set_context(cpuctx[0]);
 		for (int i=0; i<4; i++) uart_tick(uart[i], 10);
 		rtc_tick(rtc, 10);
+		scsi_tick(scsi, 10);
 		m68k_get_context(cpuctx[0]);
 	}
 }

@@ -61,7 +61,8 @@ int main(int argc, char **argv) {
 					"level_str array out of sync");
 	emu_cfg_t cfg={
 		.u15_rom="../plexus-p20/ROMs/U15-MERGED.BIN",
-		.u17_rom="../plexus-p20/ROMs/U17-MERGED.BIN"
+		.u17_rom="../plexus-p20/ROMs/U17-MERGED.BIN",
+		.hd0img="plexus-sanitized.img"
 	};
 	int error=0;
 	for (int i=1; i<argc; i++) {
