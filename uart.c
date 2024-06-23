@@ -152,7 +152,8 @@ void uart_write8(void *obj, unsigned int addr, unsigned int val) {
 			u->chan[chan].ticks_to_loopback=80;
 			UART_LOG_DEBUG("uart %s chan %s: write send loopback char 0x%X\n", u->name, chan?"B":"A", val);
 		} else {
-			if (u->is_console && chan==0) uart_console_printc(val);
+			//Huh. The main console is on channel *B* of the UART.
+			if (u->is_console && chan==1) uart_console_printc(val);
 		}
 	} else if (a==REG_TC) {
 		UART_LOG_DEBUG("uart %s chan %s: write conf time const reg 0x%X\n", u->name, chan?"B":"A", val);
