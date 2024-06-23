@@ -657,7 +657,7 @@ int old_val;
 
 void m68k_trace_cb(unsigned int pc) {
 	insn_id++;
-	if (pc==0x80bbd4 || pc==0xc0245C) {
+	if (0 &&(pc==0x80bbd4 || pc==0xc0245C)) {
 		EMU_LOG_INFO("Scsi err, callstack:\n");
 		dump_callstack();
 	}
@@ -678,7 +678,7 @@ void m68k_trace_cb(unsigned int pc) {
 
 
 static void watch_write(unsigned int addr, unsigned int val, int len) {
-	if (1 && addr/4==0xC02de2/4) {
+	if (0 && addr/4==0xC02de2/4) {
 		dump_callstack();
 	} else {
 		return;
