@@ -252,7 +252,7 @@ void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 	a=a+0x20;
 	if (a==RESET_MULTERR) {
 		CSR_LOG_DEBUG("CSR: Reset mbus error\n");
-		c->reg[CSR_O_MISC]&=~MISC_TBUSY;
+		c->reg[CSR_O_MISC/2]&=~MISC_TBUSY;
 		emu_raise_int(INT_VECT_MB_IF_ERR, 0, 0);
 		emu_raise_int(INT_VECT_MB_IF_ERR, 0, 1);
 	} else if (a==RESET_SCSI_PFLG) {
