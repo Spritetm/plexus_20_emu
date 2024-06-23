@@ -24,12 +24,12 @@
 // TODO: we also need to hook, eg, SIGINT and disable raw mode on exit
 static struct termios orig_termios;
 
-void uart_disable_console_raw_mode() {
+static void uart_disable_console_raw_mode() {
 	tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
 	UART_LOG_INFO("Leaving tty raw mode\n");
 }
 
-void uart_set_console_raw_mode() {
+static void uart_set_console_raw_mode() {
 	tcgetattr(STDIN_FILENO, &orig_termios);
 	atexit(uart_disable_console_raw_mode);
 
@@ -40,7 +40,7 @@ void uart_set_console_raw_mode() {
 	UART_LOG_INFO("Entering tty raw mode: %d (%d)\n", result, errno);
 }
 
-int uart_poll_for_console_character() {
+static int uart_poll_for_console_character() {
 	char c;
 	fd_set input;
 	struct timeval no_wait = {
@@ -135,31 +135,31 @@ void uart_write8(void *obj, unsigned int addr, unsigned int val) {
 	int chan=(addr>>4)&1;
 	int a=(addr&0xf);
 	if (a==REG_CMD) {
-		UART_LOG_DEBUG("uart %s chan %s: cmd 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: write conf cmd 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==REG_MODECTL) {
-		UART_LOG_DEBUG("uart %s chan %s: mode 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: write conf mode 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==REG_INTCTL) {
-		UART_LOG_DEBUG("uart %s chan %s: int ctl 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: write conf int ctl 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==REG_RCVCTL) {
-		UART_LOG_DEBUG("uart %s chan %s: rcv ctl 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: write conf rcv ctl 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==REG_XMTCTL) {
-		UART_LOG_DEBUG("uart %s chan %s: tx ctl 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: write conf tx ctl 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==REG_DATA) {
-		UART_LOG_DEBUG("uart %s chan %s: data reg 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: write data reg 0x%X\n", u->name, chan?"B":"A", val);
 		if (u->chan[chan].regs[0]&1) { //loop mode
 			u->chan[chan].has_char_rcv=1;
 			u->chan[chan].char_rcv=val;
 			u->chan[chan].ticks_to_loopback=80;
-			UART_LOG_DEBUG("uart %s chan %s: send loopback char 0x%X\n", u->name, chan?"B":"A", val);
+			UART_LOG_DEBUG("uart %s chan %s: write send loopback char 0x%X\n", u->name, chan?"B":"A", val);
 		} else {
-			if (u->is_console) uart_console_printc(val);
+			if (u->is_console && chan==0) uart_console_printc(val);
 		}
 	} else if (a==REG_TC) {
-		UART_LOG_DEBUG("uart %s chan %s: time const reg 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: write conf time const reg 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==REG_BRG) {
-		UART_LOG_DEBUG("uart %s chan %s: baud rate gen 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: write conf baud rate gen 0x%X\n", u->name, chan?"B":"A", val);
 	} else if (a==REG_VECT) {
-		UART_LOG_DEBUG("uart %s chan %s: vector ctl 0x%X\n", u->name, chan?"B":"A", val);
+		UART_LOG_DEBUG("uart %s chan %s: write conf vector ctl 0x%X\n", u->name, chan?"B":"A", val);
 		//there's only one vect register, it's mirrored in both channels
 		u->chan[0].regs[a]=val;
 		u->chan[1].regs[a]=val;

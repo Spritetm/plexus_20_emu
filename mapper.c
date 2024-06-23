@@ -65,7 +65,10 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags)
 	int fault=(ac&access_flags)&(ACCESS_R|ACCESS_W|ACCESS_X);
 	int uid=(ac>>W0_UID_SHIFT)&W0_UID_MASK;
 	if (uid != m->cur_id) fault=(uid<<8|0xff);
-	if (fault) MAPPER_LOG_DEBUG("Mapper: Access fault at page %d, page addr %x, fault %x (page ent %x req %x)\n", page, (page&2047)<<12, fault, ac, access_flags);
+	if (fault) {
+		MAPPER_LOG_DEBUG("Mapper: Access fault at page %d, page addr %x, fault %x (page ent %x req %x)\n", page, (page&2047)<<12, fault, ac, access_flags);
+		dump_cpu_state();
+	}
 	return !fault;
 }
 
