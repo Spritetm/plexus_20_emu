@@ -30,6 +30,8 @@ typedef struct {
 
 void emu_start(emu_cfg_t *cfg);
 
+void emu_schedule_int_us(int us);
+
 #define EMU_MBUS_ERROR_READ 0x80000000
 #define EMU_MBUS_ERROR_TIMEOUT 0x40000000
 void emu_mbus_error(unsigned int addr);

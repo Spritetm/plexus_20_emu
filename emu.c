@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <time.h>
+#include <signal.h>
 #include "Musashi/m68k.h"
 #include "uart.h"
 #include "ramrom.h"
@@ -677,7 +678,7 @@ void m68k_trace_cb(unsigned int pc) {
 
 
 static void watch_write(unsigned int addr, unsigned int val, int len) {
-	if (0 && addr/4==0xC039F8/4) {
+	if (1 && addr/4==0xC02de2/4) {
 		dump_callstack();
 	} else {
 		return;
@@ -696,7 +697,23 @@ void emu_bus_error() {
 	m68k_pulse_bus_error();
 }
 
+void emu_schedule_int_us(int us) {
+	int cycles=us*10; //cpu is 10MHz
+	int rem=m68k_cycles_remaining();
+	if (rem>cycles) {
+		m68k_modify_timeslice(cycles);
+	}
+}
+
+int dump_status=0;
+
+static void sig_hdl(int sig) {
+	dump_status=1;
+	m68k_modify_timeslice(0);
+}
+
 void emu_start(emu_cfg_t *cfg) {
+	signal(SIGQUIT, sig_hdl); // ctrl+\ to dump status
 	tracefile=fopen("trace.txt","w");
 	setup_ram("RAM");
 	setup_ram("SRAM");
@@ -752,15 +769,30 @@ void emu_start(emu_cfg_t *cfg) {
 				m68k_execute(100+cycles_remaining[i]);
 				cycles_remaining[i]=m68k_cycles_remaining();
 			}
-			m68k_get_context(cpuctx[i]);
-		}
 
-		//ints go to job cpu
-		m68k_set_context(cpuctx[0]);
-		for (int i=0; i<4; i++) uart_tick(uart[i], 10);
-		rtc_tick(rtc, 10);
-		scsi_tick(scsi, 10);
-		m68k_get_context(cpuctx[0]);
+			if (cur_cpu==0) {
+				//handle DMA CPU ints
+				for (int i=0; i<4; i++) uart_tick(uart[i], 10);
+				rtc_tick(rtc, 10);
+				scsi_tick(scsi, 10);
+			}
+
+			m68k_get_context(cpuctx[i]);
+			if (dump_status) break;
+		}
+		if (dump_status) {
+			dump_status=0;
+			printf("\n");
+			printf("Current machine status:\n");
+			for (int i=0; i<2; i++) {
+				m68k_set_context(cpuctx[i]);
+				cur_cpu=i;
+				printf("CPU %d\n", i);
+				dump_cpu_state();
+				dump_callstack();
+				m68k_get_context(cpuctx[i]);
+			}
+		}
 	}
 }
 

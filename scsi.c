@@ -146,11 +146,12 @@ enum {
 	STATE_CMD_DIN_RCV,
 	STATE_CMD_DOUT,
 	STATE_STATUS,
-	STATE_MSGIN
+	STATE_MSGIN,
+	STATE_SELECT_NODEV
 };
 
 const char *state_str[]={
-	"BUS_FREE", "SELECT", "RESELECT", "CMD_DIN", "CMD_DIN_RCV", "CMD_DOUT", "STATUS", "MSGIN"
+	"BUS_FREE", "SELECT", "RESELECT", "CMD_DIN", "CMD_DIN_RCV", "CMD_DOUT", "STATUS", "MSGIN", "SELECT_NODEV"
 };
 
 const char *bit_str[]={
@@ -273,20 +274,24 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 	If required, the interrupt we set up will poke the CPU after a timeout.
 */
 	} else if ((val&O_ARB) && (s->state==STATE_BUS_FREE || s->state==STATE_MSGIN)) {
-		//sure, we succeeded arb.
+		SCSI_LOG_DEBUG("Selected SCSI ID %d\n", s->selected);
+		s->state=STATE_SELECT;
+		s->op_timeout_us=500;
+	} else if (s->state==STATE_SELECT_NODEV) {
+		s->state=STATE_BUS_FREE;
+	} else if ((val&O_SELENA) && s->state==STATE_SELECT) {
 		int db=s->buf[0]&(0xff-8); //3 is our own scsi id
 		for (int i=0; i<8; i++) {
 			if (db&1) s->selected=i;
 			db>>=1;
 		}
 		if (s->dev[s->selected]) {
-			SCSI_LOG_DEBUG("Selected SCSI ID %d\n", s->selected);
-			s->state=STATE_SELECT;
+			s->state=STATE_RESELECT;
+			s->op_timeout_us=50;
+		} else {
+			s->state=STATE_SELECT_NODEV;
 			s->op_timeout_us=500;
 		}
-	} else if ((val&O_SELENA) && s->state==STATE_SELECT) {
-		s->state=STATE_RESELECT;
-		s->op_timeout_us=50;
 	} else if (((val&O_AUTOXFR) && (val&O_CDPTR)) && (s->state==STATE_SELECT || s->state==STATE_RESELECT)) {
 //		dump_cpu_state();
 //		assert(s->bytecount<=10);
@@ -356,23 +361,26 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 		s->state=STATE_STATUS;
 	} else if ((val&O_AUTOXFR) && (s->state==STATE_STATUS)) {
 		s->op_timeout_us=50000;
-		val|=O_SCSIIO|I_MSG|O_SRAM;
-		val&=~O_SCSICD;
+		//note: Unix needs AUTO, SCSIREQ, SRAM, CDPTR and !RESET here
+		//ROM needs REQ to go low at some point here.
+		val|=O_SCSIREQ|I_MSG|O_SRAM|O_CDPTR;
+		val&=~O_SCSICD|O_SCSIIO;
 		//should go to S_M_I
-		val&=~I_BSY;
 		s->state=STATE_MSGIN;
+		s->op_timeout_us=2;
 	} else if ((val&O_AUTOXFR) && (s->state==STATE_CMD_DOUT)) {
 		//todo
-	} else if ((val&O_AUTOXFR) && (s->state==STATE_MSGIN)) {
-		val&=~(I_REQ|I_ACK|I_IO|I_CD|I_MSG|I_BSY);
-//		val|=I_ACK;
+	} else if (s->state==STATE_MSGIN) {
+		val&=~(I_ACK|I_IO|I_CD|I_MSG|I_BSY);
+		val|=I_ACK;
 		s->buf[2]=0; s->buf[3]=0; //0=command complete
 		s->state=STATE_BUS_FREE;
+		s->op_timeout_us=2;
 	} else if (s->state==STATE_BUS_FREE) {
-		val&=~(I_REQ|I_ACK|I_IO|I_CD|I_MSG|I_BSY);
+		val&=~(I_REQ|I_ACK|I_IO|I_CD|I_MSG|I_BSY|O_AUTOXFR);
 	}
 
-	if (s->state==STATE_MSGIN) {
+	if (s->state==STATE_MSGIN || s->state==STATE_SELECT_NODEV) {
 		val&=~I_BSY; 
 	} else if (s->state!=STATE_BUS_FREE && (s->dev[s->selected])) {
 		if (val&I_ACK) val&=~(I_REQ); else val|=I_REQ;
@@ -422,15 +430,22 @@ arbit, select, scrwi, loadptrs, s_c_o_int, *crash*
 static void handle_interrupts(scsi_t *s) {
 	static int old_int_to_sel=0;
 	int int_to_sel=s->state;
-	if (s->op_timeout_us!=0) int_to_sel=-1;
-	emu_raise_int(INT_VECT_SCSI_SELECTI, (int_to_sel==STATE_SELECT)?INT_LEVEL_SCSI:0, 0);
+	if (s->op_timeout_us!=0) {
+		int_to_sel=-1;
+		emu_schedule_int_us(s->op_timeout_us);
+	}
+	emu_raise_int(INT_VECT_SCSI_SELECTI, (int_to_sel==STATE_SELECT || int_to_sel==STATE_SELECT_NODEV)?INT_LEVEL_SCSI:0, 0);
 //	emu_raise_int(INT_VECT_SCSI_RESELECT, (int_to_sel==STATE_RESELECT)?INT_LEVEL_SCSI:0, 0);
 	scsi_pointer_int(IV_INPUT, (int_to_sel==STATE_CMD_DIN));
 	scsi_pointer_int(0, (int_to_sel==STATE_CMD_DOUT));
 	scsi_pointer_int(IV_INPUT|IV_CMD, (int_to_sel==STATE_STATUS) || (int_to_sel==STATE_CMD_DIN_RCV));
-	scsi_pointer_int(IV_INPUT|IV_MSG, (int_to_sel==STATE_MSGIN));
+	scsi_pointer_int(IV_INPUT|IV_MSG|IV_CMD, (int_to_sel==STATE_MSGIN));
 	if (int_to_sel!=old_int_to_sel) {
 		if (int_to_sel>=0) SCSI_LOG_DEBUG("SCSI: select int for state %s\n", state_str[int_to_sel]);
+	}
+	if (int_to_sel==STATE_MSGIN) {
+		//Dummy write to trigger next state
+		scsi_set_scsireg(s, s->reg);
 	}
 	old_int_to_sel=int_to_sel;
 }
