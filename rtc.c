@@ -6,6 +6,8 @@
 #include "log.h"
 #include "rtc.h"
 
+//RTC is MC146818
+
 // Debug logging
 #define RTC_LOG(msg_level, format_and_args...) \
 	log_printf(LOG_SRC_RTC, msg_level, format_and_args)
@@ -69,6 +71,20 @@ static void handle_irq(rtc_t *r) {
 //	if (irq) emu_raise_rtc_int();
 }
 
+void rtc_sanitize_vals(rtc_t *r) {
+	if (r->reg[CALSECS]>=60) r->reg[CALSECS]=0;
+	if (r->reg[CALMINS]>=60) r->reg[CALMINS]=0;
+	if (r->reg[CALHRS]>=24) r->reg[CALHRS]=0;
+	if (r->reg[CALDAY]==0) r->reg[CALDAY]=1;
+	if (r->reg[CALDAY]>7) r->reg[CALDAY]=7;
+	if (r->reg[CALDATE]==0) r->reg[CALDATE]=1;
+	if (r->reg[CALDATE]>31) r->reg[CALDATE]=31;
+	if (r->reg[CALMONTH]==0) r->reg[CALMONTH]=1;
+	if (r->reg[CALMONTH]>12) r->reg[CALMONTH]=12;
+	if (r->reg[CALYEAR]>99) r->reg[CALYEAR]=0;
+}
+
+
 void rtc_write8(void *obj, unsigned int a, unsigned int val) {
 	a=a/2; //rtc is on odd addresses
 	rtc_t *r=(rtc_t*)obj;
@@ -95,6 +111,7 @@ void rtc_write8(void *obj, unsigned int a, unsigned int val) {
 	}
 	handle_irq(r);
 	if (a!=CALREGC && a!=CALREGD) r->reg[a]=val;
+	rtc_sanitize_vals(r);
 }
 
 void rtc_write16(void *obj, unsigned int a, unsigned int val) {
@@ -104,13 +121,14 @@ void rtc_write16(void *obj, unsigned int a, unsigned int val) {
 unsigned int rtc_read8(void *obj, unsigned int a) {
 	a=a/2; //rtc is on odd addresses
 	rtc_t *r=(rtc_t*)obj;
+	int ret=r->reg[a];
 	if (a<=CALYEAR) {
 		int bcd=r->reg[CALREGB]&1;
-		if (bcd) return tobcd(r->reg[a]); else return r->reg[a];
+		if (bcd) ret=tobcd(r->reg[a]); else ret=r->reg[a];
 	}
-	int ret=r->reg[a];
 	if (a==CALREGC) r->reg[a]=0; //clears on read
 	if (a==CALREGD) r->reg[a]=0x80; //set VRT on read
+	RTC_LOG_DEBUG("RTC: read reg %x -> 0x%x (=%d)\n", a, ret, ret);
 	return ret;
 }
 
@@ -118,12 +136,11 @@ unsigned int rtc_read16(void *obj, unsigned int a) {
 	return rtc_read8(obj, a+1);
 }
 
-
 rtc_t *rtc_new() {
 	rtc_t *ret=calloc(sizeof(rtc_t), 1);
+	rtc_sanitize_vals(ret);
 	return ret;
 }
-
 
 void rtc_tick(rtc_t *r, int ticklen_us) {
 	r->us+=ticklen_us;
@@ -144,18 +161,18 @@ void rtc_tick(rtc_t *r, int ticklen_us) {
 				r->reg[CALDAY]++;
 				r->reg[CALDATE]++;
 			}
-			if (r->reg[CALDAY]>=7) {
-				r->reg[CALDAY]=0;
+			if (r->reg[CALDAY]>=8) { //day is 1-7
+				r->reg[CALDAY]=1;
 			}
-			int month=r->reg[CALMONTH];
-			if (month>12) month=12;
+			int month=r->reg[CALMONTH]; //month is 1-12
+			if (month>13) month=13;
 			const int dim[12]={31,28,31,30,31,30,31,31,30,31,30,31};
-			if (r->reg[CALDATE]>=dim[month]) {
-				r->reg[CALDATE]=0;
+			if (r->reg[CALDATE]>dim[month-1]) {
+				r->reg[CALDATE]=1;
 				r->reg[CALMONTH]++;
 			}
-			if (r->reg[CALMONTH]>=12) {
-				r->reg[CALMONTH]=0;
+			if (r->reg[CALMONTH]>=13) {
+				r->reg[CALMONTH]=1;
 				r->reg[CALYEAR]++;
 			}
 			if (r->reg[CALSECS]==r->reg[CALSECALARM] &&
