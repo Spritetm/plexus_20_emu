@@ -59,6 +59,7 @@ void mapper_set_mapid(mapper_t *m, uint8_t id) {
 	m->cur_id=id;
 }
 
+//returns fault indicator, or 0 if allowed
 static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags) {
 	assert(page<4096);
 	unsigned int ac=(m->desc[page].w1<<16)+m->desc[page].w0;
@@ -82,14 +83,15 @@ int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags) {
 	if (a>=0x800000) {
 		//Anything except RAM does not go through the mapper, but is only
 		//accessible in system mode.
-		return (access_flags&ACCESS_SYSTEM)?ACCESS_ERROR_OK:ACCESS_ERROR_A;
+		int ret=(access_flags&ACCESS_SYSTEM)?ACCESS_ERROR_OK:ACCESS_ERROR_A;
+		if (ret==ACCESS_ERROR_A) {
+			MAPPER_LOG_INFO("mapper_access_allowed: address %x not accessible in user mode\n", a);
+		}
+		return ret;
 	}
 	//Map virtual page to phyical page.
 	int p=a>>12; //4K pages
-	if (p>=2048) {
-		MAPPER_LOG_INFO("mapper_access_allowed: out of range addr %x\n", a);
-		exit(1);
-	}
+	assert(p<=2048 && "out of range addr");
 	if (access_flags&ACCESS_SYSTEM) p+=2048;
 	int r=access_allowed_page(m, p, access_flags);
 	if (r) {

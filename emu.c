@@ -185,9 +185,11 @@ static int check_can_access(mem_range_t *m, unsigned int address) {
 static unsigned int read_memory_32(unsigned int address) {
 	if (address==0) EMU_LOG_DEBUG("read addr 0\n");
 	mem_range_t *m=find_range_by_addr(address);
-	//HACK! If this is set, diags get more verbose
-//	if (address==0xC00644) return 1; //output 'expected' diag lines
-//	if (address==0xC006de) return 1; //output PC of next subtest
+	//HACK! If this is enabled, diags get more verbose
+#if 0
+	if (address==0xC00644) return 1; //output 'expected' diag lines
+	if (address==0xC006de) return 1; //output PC of next subtest
+#endif
 	if (!m) {
 		EMU_LOG_INFO("Read32 from unmapped addr %08X\n", address);
 		dump_cpu_state();
@@ -317,11 +319,9 @@ static int check_mem_access(unsigned int address, int flags) {
 		dump_callstack();
 		csr_set_access_error(csr, cur_cpu, access);
 
-		assert(recursive_error==0);
-		recursive_error=1;
+		//note THIS WILL NOT RETURN!
+		//(m68ki_exception_bus_error ends with a longjmp)
 		m68k_pulse_bus_error();
-		recursive_error=0;
-
 		return 0;
 	}
 	return 1;
