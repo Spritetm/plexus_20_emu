@@ -14,6 +14,7 @@
 #include "scsi_dev_hd.h"
 #include "mbus.h"
 #include "rtc.h"
+#include "rtcram.h"
 #include "log.h"
 #include "emu.h"
 #include "int.h"
@@ -498,6 +499,22 @@ rtc_t *setup_rtc(const char *name) {
 	return r;
 }
 
+// RTC RAM is physically part of the RTC, but implemented in a different
+// virtual device for simplicity; it is like standard RAM, but persistent
+// over separate emulator runs.
+//
+void setup_rtcram(const char *name, const char *filename) {
+	mem_range_t *m=find_range_by_name(name);
+	m->obj=rtcram_new(filename);
+	m->write8=rtcram_write8;
+	m->write16=rtcram_write16;
+	m->write32=rtcram_write32;
+	m->read8=rtcram_read8;
+	m->read16=rtcram_read16;
+	m->read32=rtcram_read32;
+	EMU_LOG_INFO("Set up 0x%X bytes of persistent RAM in section '%s'.\n", m->size, m->name);
+}
+
 csr_t *setup_csr(const char *name, const char *mmio_name, const char *scsi_name) {
 	mem_range_t *m=find_range_by_name(name);
 	mem_range_t *mm=find_range_by_name(mmio_name);
@@ -717,7 +734,7 @@ void emu_start(emu_cfg_t *cfg) {
 	tracefile=fopen("trace.txt","w");
 	setup_ram("RAM");
 	setup_ram("SRAM");
-	setup_ram("RTC_RAM");
+	setup_rtcram("RTC_RAM", cfg->rtcram);
 	setup_rom("U15", cfg->u15_rom); //used to be U17
 	setup_rom("U17", cfg->u17_rom); //used to be U19
 	uart_t *uart[4];

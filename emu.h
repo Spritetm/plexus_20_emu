@@ -26,6 +26,7 @@ typedef struct {
 	const char *u15_rom;
 	const char *u17_rom;
 	const char *hd0img;
+	const char *rtcram;
 } emu_cfg_t;
 
 void emu_start(emu_cfg_t *cfg);

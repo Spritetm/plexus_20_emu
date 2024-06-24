@@ -2,3 +2,5 @@ emu
 *.o
 *.d
 trace.txt
+plexus-sanitized.img
+rtcram.bin
