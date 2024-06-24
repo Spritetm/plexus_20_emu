@@ -508,8 +508,10 @@ void setup_rtcram(const char *name, const char *filename) {
 	m->obj=rtcram_new(filename);
 	m->write8=rtcram_write8;
 	m->write16=rtcram_write16;
+	m->write32=rtcram_write32;
 	m->read8=rtcram_read8;
 	m->read16=rtcram_read16;
+	m->read32=rtcram_read32;
 	EMU_LOG_INFO("Set up 0x%X bytes of persistent RAM in section '%s'.\n", m->size, m->name);
 }
 

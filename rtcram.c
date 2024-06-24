@@ -47,6 +47,14 @@ void rtcram_write16(void *obj, unsigned int a, unsigned int val) {
 	rtcram_write8(obj, a+1, val);
 }
 
+// RTC RAM is at every second address, so write32 writes to
+// - lower 8 bits of top 16 bits
+// - lower 8 bits of bottom 16 bits
+void rtcram_write32(void *obj, unsigned int a, unsigned int val) {
+	rtcram_write8(obj, a+1, (val >> 16) & 0xFFFF); // lower 8 of upper 16
+	rtcram_write8(obj, a+3,  val        & 0xFFFF); // lower 8 of lower 16
+}
+
 unsigned int rtcram_read8(void *obj, unsigned int a) {
 	rtcram_t *r=(rtcram_t*)obj;
 
@@ -59,6 +67,14 @@ unsigned int rtcram_read8(void *obj, unsigned int a) {
 
 unsigned int rtcram_read16(void *obj, unsigned int a) {
 	return rtcram_read8(obj, a+1);
+}
+
+// RTC RAM is at every second address, so read32 reads from
+// - lower 8 bits of top 16 bits
+// - lower 8 bits of bottom 16 bits
+unsigned int rtcram_read32(void *obj, unsigned int a) {
+	return (((rtcram_read8(obj, a+1) & 0XFFFF) << 16) |
+	        ((rtcram_read8(obj, a+3) & 0xFFFF)));
 }
 
 rtcram_t *rtcram_new(const char *filename) {
