@@ -28,5 +28,6 @@ enum log_level {
 
 void log_set_level(enum log_source source, enum log_level msg_level);
 int log_printf(enum log_source source, enum log_level msg_level, const char *format, ...);
+int log_level_active(enum log_source source, enum log_level msg_level);
 
 #endif

@@ -94,7 +94,7 @@ int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags) {
 	assert(p<=2048 && "out of range addr");
 	if (access_flags&ACCESS_SYSTEM) p+=2048;
 	int r=access_allowed_page(m, p, access_flags);
-	if (r) {
+	if (r && log_level_active(LOG_SRC_MAPPER, LOG_DEBUG)) {
 		MAPPER_LOG_DEBUG("Mapper: Access fault at addr %x page %d. CPU state:\n", a, p);
 		dump_cpu_state();
 		dump_callstack();

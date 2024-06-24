@@ -46,6 +46,10 @@ void log_set_level(enum log_source source, enum log_level msg_level) {
 	log_channel_verbose_level[source]=msg_level;
 }
 
+int log_level_active(enum log_source source, enum log_level msg_level) {
+	return log_channel_verbose_level[source] >= msg_level;
+}
+
 int log_printf(enum log_source source, enum log_level msg_level, const char *format, ...) {
 	static_assert(sizeof(log_channel_verbose_level)/sizeof(log_channel_verbose_level[0])==LOG_SRC_MAX, 
 				"log_channel_verbose_level missing an entry");

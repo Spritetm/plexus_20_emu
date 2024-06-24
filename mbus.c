@@ -21,54 +21,37 @@ but they obvs can't do that for 8-bit writes/reads. So 16-bit writes go through
 transparently, but a write/read to 8-bit address x happens to x^1 :X
 */
 
-
-
-
 static int mbus_held() {
 	if (!emu_try_mbus_held()) return 0;
 	MBUS_LOG_DEBUG("Blocking op: bus held\n");
 	return 1;
 }
 
-static int on_wrong_cpu(int addr) {
-	int r=emu_get_cur_cpu();
-	if (r==1) return 0;
-	MBUS_LOG_NOTICE("Mbus access to %x from wrong CPU\n", addr);
-	emu_bus_error();
-	return 1;
-}
-
-
-
 void mbus_write8(void *obj, unsigned int a, unsigned int val) {
-	if (on_wrong_cpu(a)) return;
 	MBUS_LOG_DEBUG("MBUS: wb %x->%x %x\n", a, a+0x780000, val);
 	if (mbus_held()) {
 		MBUS_LOG_NOTICE("MBUS: ^^ write held.\n");
 		return;
 	}
 	if (!emu_get_mb_diag()){
-//		emu_mbus_error(a|EMU_MBUS_ERROR_TIMEOUT);
 		return;
 	}
 	int r=emu_write_byte((a+0x780000)^1, val);
-	if (!r) emu_mbus_error(a);
+	if (r==-1) emu_mbus_error(a);
 }
 
 void mbus_write16(void *obj, unsigned int a, unsigned int val) {
-	if (on_wrong_cpu(a)) return;
 	MBUS_LOG_DEBUG("MBUS: ww %x->%x %x\n", a, a+0x780000, val);
 	if (mbus_held()) {
 		MBUS_LOG_NOTICE("MBUS: ^^ write held.\n");
 		return;
 	}
 	if (!emu_get_mb_diag()){
-//		emu_mbus_error(a|EMU_MBUS_ERROR_TIMEOUT);
 		return;
 	}
 	int r=emu_write_byte((a+0x780000), val>>8);
-	r&=emu_write_byte((a+0x780001), val);
-	if (!r) emu_mbus_error(a);
+	r+=emu_write_byte((a+0x780001), val);
+	if (r<0) emu_mbus_error(a);
 }
 
 void mbus_write32(void *obj, unsigned int a, unsigned int val) {
@@ -77,21 +60,18 @@ void mbus_write32(void *obj, unsigned int a, unsigned int val) {
 }
 
 unsigned int mbus_read8(void *obj, unsigned int a) {
-	if (on_wrong_cpu(a)) return 0;
 	MBUS_LOG_DEBUG("MBUS: rb %x->%x\n", a, a+0x780000);
+	if (!emu_get_mb_diag()) return 0;
 	//Mbus in diag modes errors with a MBTO.
-	emu_mbus_error(a|EMU_MBUS_ERROR_TIMEOUT);
+	emu_mbus_error(a|EMU_MBUS_BUSERROR);
 	return 0;
 }
 
 unsigned int mbus_read16(void *obj, unsigned int a) {
-	if (on_wrong_cpu(a)) return 0;
 	MBUS_LOG_DEBUG("MBUS: rw %x->%x\n", a, a+0x780000);
-	if (!emu_get_mb_diag()){
-		return 0;
-	}
+	if (!emu_get_mb_diag()) return 0;
 	//Mbus in diag modes errors with a MBTO.
-	emu_mbus_error(a|EMU_MBUS_ERROR_TIMEOUT);
+	emu_mbus_error(a|EMU_MBUS_BUSERROR);
 	return 0;
 }
 
@@ -101,13 +81,14 @@ unsigned int mbus_read32(void *obj, unsigned int a) {
 
 void mbus_io_write(void *obj, unsigned int a, unsigned int val) {
 	if (emu_get_mb_diag()) return;
-//	printf("mbio wr %x\n", a);
-	emu_mbus_error(a|EMU_MBUS_ERROR_TIMEOUT);
+	MBUS_LOG_DEBUG("mbio wr %x\n", a);
+	emu_mbus_error(a|EMU_MBUS_BUSERROR);
 }
 
 unsigned int mbus_io_read(void *obj, unsigned int a) {
 	if (emu_get_mb_diag()) return 0;
-	emu_mbus_error(a|EMU_MBUS_ERROR_TIMEOUT);
+	MBUS_LOG_DEBUG("mbio rd %x\n", a);
+	emu_mbus_error(a|EMU_MBUS_ERROR_READ|EMU_MBUS_BUSERROR);
 	return 0;
 }
 

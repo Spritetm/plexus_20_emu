@@ -129,7 +129,7 @@ int csr_try_mbus_held(csr_t *csr) {
 	return 1;
 }
 
-void csr_set_access_error(csr_t *csr, int cpu, int type) {
+void csr_set_access_error(csr_t *csr, int cpu, int type, int addr, int is_write) {
 	int v=0;
 	if (cpu==0) {
 		if (type&ACCESS_ERROR_U) v|=ERR_UBE_DMA;
@@ -138,9 +138,17 @@ void csr_set_access_error(csr_t *csr, int cpu, int type) {
 		if (type&ACCESS_ERROR_U) v|=ERR_UBE_JOB;
 		if (type&ACCESS_ERROR_A) v|=ERR_ABE_JOB;
 	}
-	if (type&ACCESS_ERROR_MBTO) v|=ERR_MBTO;
+	if (type&ACCESS_ERROR_MBTO) {
+		v|=ERR_MBTO;
+		if (emu_get_mb_diag()) {
+			emu_raise_int(INT_VECT_MB_IF_ERR, INT_LEVEL_MB_IF_ERR, 1);
+			csr->reg[CSR_I_MBERR/2]=(addr>>11)&0xfe;
+			if (!is_write) csr->reg[CSR_I_MBERR/2]|=0x1;
+		}
+	}
 	csr->reg[CSR_I_ERR/2]|=v;
 }
+
 
 void csr_set_parity_error(csr_t *c, int hl) {
 	c->reg[CSR_I_PERR1/2]&=~((1<<12)|(1<<13));
@@ -165,6 +173,8 @@ void csr_write16(void *obj, unsigned int a, unsigned int val) {
 		emu_enable_mapper(!(val&MISC_ENMAP));
 		if ((val&MISC_HOLDMBUS)==0) {
 			val&=~MISC_TBUSY;
+		} else {
+			val|=MISC_TBUSY;
 		}
 		int v=0;
 		if ((val&MISC_SCSIDL)==0) v|=SCSI_DIAG_LATCH;
@@ -177,6 +187,7 @@ void csr_write16(void *obj, unsigned int a, unsigned int val) {
 		v=0;
 		if (val&MISC_DIAGPL) v|=1;
 		if (val&MISC_DIAGPH) v|=2;
+
 		emu_set_force_parity_error(v);
 		emu_set_mb_diag(val&MISC_DIAGMB);
 	} else if (a==CSR_O_KILL) { //kill
@@ -299,12 +310,9 @@ void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 	}
 }
 
-void csr_raise_error(csr_t *c, int error, unsigned int addr) {
-	if (error==CSR_ERR_MBUS) {
-		emu_raise_int(INT_VECT_MB_IF_ERR, INT_LEVEL_MB_IF_ERR, 1);
-		c->reg[CSR_I_MBERR/2]=(addr>>11)&0xfe;
-		if (addr&EMU_MBUS_ERROR_READ) c->reg[CSR_I_MBERR/2]|=0x1;
-	}
+unsigned int csr_read16_mmio(void *obj, unsigned int a) {
+	csr_write16_mmio(obj, a, 0);
+	return 0;
 }
 
 

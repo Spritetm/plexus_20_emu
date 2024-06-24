@@ -174,7 +174,7 @@ static int check_can_access(mem_range_t *m, unsigned int address) {
 		ret=0;
 	}
 	if (!ret) {
-		csr_set_access_error(csr, cur_cpu, ACCESS_ERROR_A);
+		csr_set_access_error(csr, cur_cpu, ACCESS_ERROR_A, address, 0);
 		m68k_pulse_bus_error();
 	}
 	return ret;
@@ -307,17 +307,17 @@ void emu_set_cur_mapid(uint8_t id) {
 //thing to actually throw the error.
 
 static int check_mem_access(unsigned int address, int flags) {
-	static int recursive_error=0;
 	if (!mapper_enabled) return 1;
 	if ((fc_bits&3)==2) flags=ACCESS_X;
 	if (fc_bits&4) flags|=ACCESS_SYSTEM;
 	int access=mapper_access_allowed(mapper, address, flags);
 	if (access!=ACCESS_ERROR_OK) {
-		EMU_LOG_DEBUG("Bus error! Access %x\n", address);
-//		if (address==0x1000) do_tracefile=1;
-		dump_cpu_state();
-		dump_callstack();
-		csr_set_access_error(csr, cur_cpu, access);
+		if (log_level_active(LOG_SRC_MAPPER, LOG_DEBUG)) {
+			EMU_LOG_INFO("Illegal access! Access %x\n", address);
+			dump_cpu_state();
+			dump_callstack();
+		}
+		csr_set_access_error(csr, cur_cpu, access, address, flags&ACCESS_W);
 
 		//note THIS WILL NOT RETURN!
 		//(m68ki_exception_bus_error ends with a longjmp)
@@ -455,13 +455,9 @@ int emu_write_byte(int addr, int val) {
 }
 
 void emu_mbus_error(unsigned int addr) {
-	mem_range_t *r=find_range_by_name("CSR");
-	if (addr&EMU_MBUS_ERROR_TIMEOUT) {
-		csr_set_access_error(csr, 1, ACCESS_ERROR_MBTO);
+	csr_set_access_error(csr, 1, ACCESS_ERROR_MBTO, addr&0xffffff, !(addr&EMU_MBUS_ERROR_READ));
+	if (addr&EMU_MBUS_BUSERROR) {
 		emu_bus_error();
-	} else {
-		csr_t *c=(csr_t*)r->obj;
-		csr_raise_error(c, CSR_ERR_MBUS, addr);
 	}
 }
 
@@ -537,6 +533,7 @@ csr_t *setup_csr(const char *name, const char *mmio_name, const char *scsi_name)
 	m->read16=csr_read16;
 	m->read8=csr_read8;
 	mm->write16=csr_write16_mmio;
+	mm->read16=csr_read16_mmio;
 	return r;
 }
 
@@ -604,9 +601,7 @@ void setup_mbus(const char *name, const char *ioname) {
 
 //1 if held
 int emu_try_mbus_held() {
-	mem_range_t *r=find_range_by_name("CSR");
-	csr_t *c=(csr_t*)r->obj;
-	return csr_try_mbus_held(c);
+	return csr_try_mbus_held(csr);
 }
 
 void setup_nop(const char *name) {

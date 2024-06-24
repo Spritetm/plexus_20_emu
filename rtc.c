@@ -111,7 +111,8 @@ void rtc_write8(void *obj, unsigned int a, unsigned int val) {
 	}
 	handle_irq(r);
 	if (a!=CALREGC && a!=CALREGD) r->reg[a]=val;
-	rtc_sanitize_vals(r);
+	//Sanitize values if clock is running
+	if (!(r->reg[CALREGB]&0x80)) rtc_sanitize_vals(r);
 }
 
 void rtc_write16(void *obj, unsigned int a, unsigned int val) {
