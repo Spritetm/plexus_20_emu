@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 #include "scsi.h"
 #include "emu.h"
 #include "log.h"
@@ -67,7 +68,13 @@ int hd_handle_data_in(scsi_dev_t *dev, uint8_t *msg, int buflen) {
 		fread(msg, blen, 1, hd->hdfile);
 //		printf("Read %d bytes from LB %d\n", blen, lba);
 		return blen;
+	} else if (hd->cmd[0]==0xc2) {
+		//omti config command?
+	} else {
+		printf("Unknown command: 0x%x\n", hd->cmd[0]);
+		assert(0 && "hd_handle_data_in: unknown cmd");
 	}
+	return 0;
 }
 
 static void hd_handle_data_out(scsi_dev_t *dev, uint8_t *msg, int len) {

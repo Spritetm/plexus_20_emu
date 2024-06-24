@@ -64,7 +64,7 @@ struct mem_range_t {
 static mem_range_t memory[]={
 //	{.name="RAM",     .offset=0, .size=0x200000, .flags=FLAG_USR_OK}, //only 2MiB of RAM
 	{.name="RAM",     .offset=0, .size=0x800000, .flags=FLAG_USR_OK}, //fully decked out with 8MiB of RAM
-	{.name="MAPRAM",  .offset=0, .size=0}, //MMU-mapped RAM
+	{.name="MAPRAM",  .offset=0, .size=0, .flags=FLAG_USR_OK}, //MMU-mapped RAM
 	{.name="U17",     .offset=0x800000, .size=0x8000}, //used to be U19
 	{.name="U15",     .offset=0x808000, .size=0x8000}, //used to be U17
 	{.name="MAPPER",  .offset=0x900000, .size=0x4000},
@@ -93,12 +93,9 @@ void dump_cpu_state() {
 	unsigned int pc=m68k_get_reg(NULL, M68K_REG_PPC);
 	unsigned int sp=m68k_get_reg(NULL, M68K_REG_SP);
 	unsigned int sr=m68k_get_reg(NULL, M68K_REG_SR);
-
 	unsigned int d0=m68k_get_reg(NULL, M68K_REG_D0);
 
-	unsigned int mem=m68k_read_memory_8(0xc00604);
-
-	EMU_LOG_INFO("id %d CPU %d PC %08X SP %08X SR %08X D0 %08X m %08X\n", insn_id, cur_cpu, pc, sp, sr, d0, mem);
+	EMU_LOG_INFO("id %d CPU %d PC %08X SP %08X SR %08X D0 %08X\n", insn_id, cur_cpu, pc, sp, sr, d0);
 }
 
 void dump_callstack() {
@@ -171,7 +168,9 @@ void setup_rom(const char *name, const char *filename) {
 static int check_can_access(mem_range_t *m, unsigned int address) {
 	int ret=1;
 	if (cur_cpu==1 && ((fc_bits&4)==0) && ((m->flags&FLAG_USR_OK)==0)) {
-		EMU_LOG_INFO("Faulting CPU %d for accessing non-RAM address %X in user mode (fc=%x)\n", cur_cpu, address, fc_bits);
+		EMU_LOG_INFO("Faulting CPU %d for accessing non-RAM address %X in range %s in user mode (fc=%x)\n", cur_cpu, address, m->name, fc_bits);
+		dump_cpu_state();
+		dump_callstack();
 		ret=0;
 	}
 	if (!ret) {
@@ -306,16 +305,23 @@ void emu_set_cur_mapid(uint8_t id) {
 //thing to actually throw the error.
 
 static int check_mem_access(unsigned int address, int flags) {
+	static int recursive_error=0;
 	if (!mapper_enabled) return 1;
 	if ((fc_bits&3)==2) flags=ACCESS_X;
 	if (fc_bits&4) flags|=ACCESS_SYSTEM;
-	if (!mapper_access_allowed(mapper, address, flags)) {
+	int access=mapper_access_allowed(mapper, address, flags);
+	if (access!=ACCESS_ERROR_OK) {
 		EMU_LOG_DEBUG("Bus error! Access %x\n", address);
 //		if (address==0x1000) do_tracefile=1;
-//		dump_cpu_state();
-//		dump_callstack();
-		csr_set_access_error(csr, cur_cpu, ACCESS_ERROR_A);
+		dump_cpu_state();
+		dump_callstack();
+		csr_set_access_error(csr, cur_cpu, access);
+
+		assert(recursive_error==0);
+		recursive_error=1;
 		m68k_pulse_bus_error();
+		recursive_error=0;
+
 		return 0;
 	}
 	return 1;
@@ -435,15 +441,17 @@ void m68k_write_memory_32(unsigned int address, unsigned int value) {
 //Used for SCSI DMA transfers as well as mbus transfers.
 int emu_read_byte(int addr) {
 	int access_flags=ACCESS_R|ACCESS_SYSTEM;
-	if (!mapper_access_allowed(mapper, addr, access_flags)) return -1;
+	if (mapper_access_allowed(mapper, addr, access_flags)!=ACCESS_ERROR_OK) {
+		return -1;
+	}
 	return read_memory_8(addr);
 }
 
 int emu_write_byte(int addr, int val) {
 	int access_flags=ACCESS_W|ACCESS_SYSTEM;
-	if (!mapper_access_allowed(mapper, addr, access_flags)) return 0;
+	if (mapper_access_allowed(mapper, addr, access_flags)!=ACCESS_ERROR_OK) return -1;
 	write_memory_8(addr, val);
-	return -1;
+	return 0;
 }
 
 void emu_mbus_error(unsigned int addr) {
@@ -678,6 +686,13 @@ void m68k_trace_cb(unsigned int pc) {
 		EMU_LOG_INFO("Scsi err, callstack:\n");
 		dump_callstack();
 	}
+	if (0 && pc==0x1410) {
+		EMU_LOG_INFO("gettod\n");
+		dump_callstack();
+	}
+	if (0 && pc==0xCFE2) {
+		EMU_LOG_INFO("sched loop\n");
+	}
 
 	//note: pc already is advanced to the next insn when this is called
 	//but ir is not
@@ -732,6 +747,7 @@ static void sig_hdl(int sig) {
 void emu_start(emu_cfg_t *cfg) {
 	signal(SIGQUIT, sig_hdl); // ctrl+\ to dump status
 	tracefile=fopen("trace.txt","w");
+//	do_tracefile=1;
 	setup_ram("RAM");
 	setup_ram("SRAM");
 	setup_rtcram("RTC_RAM", cfg->rtcram);

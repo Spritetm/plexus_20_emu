@@ -27,6 +27,7 @@ void mapper_set_mapid(mapper_t *m, uint8_t id);
 #define ACCESS_W 0x40000000
 #define ACCESS_X 0x20000000
 
+//Returns one of ACCESS_ERROR_x
 int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags);
 
 

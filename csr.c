@@ -187,7 +187,7 @@ void csr_write16(void *obj, unsigned int a, unsigned int val) {
 		CSR_LOG_DEBUG("csr write16 0x%X (err) val 0x%X - reg is RO?\n", a, val);
 		val=c->reg[a/2];
 	} else if (a==CSR_O_MAPID) {
-		emu_set_cur_mapid(val>>8);
+		emu_set_cur_mapid(val);
 	} else {
 		CSR_LOG_DEBUG("csr write16 0x%X val 0x%X\n", a, val);
 	}

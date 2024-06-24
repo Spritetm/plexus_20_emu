@@ -64,19 +64,25 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags)
 	unsigned int ac=(m->desc[page].w1<<16)+m->desc[page].w0;
 	int fault=(ac&access_flags)&(ACCESS_R|ACCESS_W|ACCESS_X);
 	int uid=(ac>>W0_UID_SHIFT)&W0_UID_MASK;
-	if (uid != m->cur_id) fault=(uid<<8|0xff);
-	if (fault) {
-		MAPPER_LOG_DEBUG("Mapper: Access fault at page %d, page addr %x, fault %x (page ent %x req %x)\n", page, (page&2047)<<12, fault, ac, access_flags);
-		dump_cpu_state();
+	if ((access_flags&ACCESS_SYSTEM)==0) {
+		if (uid != m->cur_id) fault=(uid<<8|0xff);
 	}
-	return !fault;
+	if (fault) {
+		MAPPER_LOG_DEBUG("Mapper: Access fault: page ent %x req %x, fault %x (", ac, access_flags, fault);
+		if (fault&(W1_W<<16)) MAPPER_LOG_DEBUG("write violation ");
+		if (fault&(W1_R<<16)) MAPPER_LOG_DEBUG("read violation ");
+		if (fault&(W1_X<<16)) MAPPER_LOG_DEBUG("execute violation ");
+		if (fault&0xff00) MAPPER_LOG_DEBUG("proc uid %d page uid %d ", m->cur_id, uid);
+		MAPPER_LOG_DEBUG(")\n");
+	}
+	return fault;
 }
 
 int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags) {
 	if (a>=0x800000) {
 		//Anything except RAM does not go through the mapper, but is only
 		//accessible in system mode.
-		return (access_flags&ACCESS_SYSTEM);
+		return (access_flags&ACCESS_SYSTEM)?ACCESS_ERROR_OK:ACCESS_ERROR_A;
 	}
 	//Map virtual page to phyical page.
 	int p=a>>12; //4K pages
@@ -85,7 +91,17 @@ int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags) {
 		exit(1);
 	}
 	if (access_flags&ACCESS_SYSTEM) p+=2048;
-	return access_allowed_page(m, p, access_flags);
+	int r=access_allowed_page(m, p, access_flags);
+	if (r) {
+		MAPPER_LOG_DEBUG("Mapper: Access fault at addr %x page %d. CPU state:\n", a, p);
+		dump_cpu_state();
+		dump_callstack();
+		MAPPER_LOG_DEBUG("Mapper: Dump done.\n");
+	}
+	int x=ACCESS_ERROR_OK;
+	if (r) x=ACCESS_ERROR_A;
+	if (r&0xff00) x=ACCESS_ERROR_U;
+	return x;
 }
 
 

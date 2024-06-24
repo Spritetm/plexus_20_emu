@@ -19,6 +19,7 @@ int csr_try_mbus_held(csr_t *csr);
 #define CSR_ERR_MBUS 1
 void csr_raise_error(csr_t *c, int error, unsigned int addr);
 
+#define ACCESS_ERROR_OK 0
 #define ACCESS_ERROR_U 1
 #define ACCESS_ERROR_A 2
 #define ACCESS_ERROR_MBTO 3
