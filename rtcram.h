@@ -7,6 +7,6 @@ void rtcram_write8(void *obj, unsigned int a, unsigned int val);
 void rtcram_write16(void *obj, unsigned int a, unsigned int val);
 unsigned int rtcram_read8(void *obj, unsigned int a);
 unsigned int rtcram_read16(void *obj, unsigned int a);
-rtcram_t *rtcram_new();
+rtcram_t *rtcram_new(const char *filename);
 
 #endif

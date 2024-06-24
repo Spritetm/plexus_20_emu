@@ -62,7 +62,8 @@ int main(int argc, char **argv) {
 	emu_cfg_t cfg={
 		.u15_rom="../plexus-p20/ROMs/U15-MERGED.BIN",
 		.u17_rom="../plexus-p20/ROMs/U17-MERGED.BIN",
-		.hd0img="plexus-sanitized.img"
+		.hd0img="plexus-sanitized.img",
+		.rtcram="rtcram.bin"
 	};
 	int error=0;
 	for (int i=1; i<argc; i++) {

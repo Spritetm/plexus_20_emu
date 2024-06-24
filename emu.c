@@ -503,9 +503,9 @@ rtc_t *setup_rtc(const char *name) {
 // virtual device for simplicity; it is like standard RAM, but persistent
 // over separate emulator runs.
 //
-void setup_rtcram(const char *name) {
+void setup_rtcram(const char *name, const char *filename) {
 	mem_range_t *m=find_range_by_name(name);
-	m->obj=rtcram_new();
+	m->obj=rtcram_new(filename);
 	m->write8=rtcram_write8;
 	m->write16=rtcram_write16;
 	m->read8=rtcram_read8;
@@ -732,7 +732,7 @@ void emu_start(emu_cfg_t *cfg) {
 	tracefile=fopen("trace.txt","w");
 	setup_ram("RAM");
 	setup_ram("SRAM");
-	setup_rtcram("RTC_RAM");
+	setup_rtcram("RTC_RAM", cfg->rtcram);
 	setup_rom("U15", cfg->u15_rom); //used to be U17
 	setup_rom("U17", cfg->u17_rom); //used to be U19
 	uart_t *uart[4];
