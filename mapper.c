@@ -108,7 +108,7 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags)
 		if (fault&(ACCESS_W<<16)) MAPPER_LOG_DEBUG("write violation ");
 		if (fault&(ACCESS_R<<16)) MAPPER_LOG_DEBUG("read violation ");
 		if (fault&(ACCESS_X<<16)) MAPPER_LOG_DEBUG("execute violation ");
-		if (fault&0xff00) MAPPER_LOG_DEBUG("proc uid %d page uid %d ", m->cur_id, uid);
+		MAPPER_LOG_DEBUG("proc uid %d %s page uid %d ", uid, (m->cur_id==uid?"=":"!="), m->cur_id);
 		if (access_flags&ACCESS_SYSTEM) MAPPER_LOG_DEBUG("system ");
 		MAPPER_LOG_DEBUG(")\n");
 	}
