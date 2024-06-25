@@ -23,6 +23,8 @@ a page size of 4K.
 We have space for 8K physical pages; this means we could map
 to 32MiB of physical RAM.
 
+On write of 32-bit, w0 is msb and w1 lsb.
+Note the RWX bits *disable* that access when 1.
 */
 
 typedef struct {
@@ -32,12 +34,6 @@ typedef struct {
 
 #define SYS_ENTRY_START 2048
 
-//Note: on write of 32-bit, w0 is msb and w1 lsb
-
-//Note the RWX bits *disable* that access when 1.
-#define W1_R 0x8000
-#define W1_W 0x4000
-#define W1_X 0x2000
 #define W1_PAGE_MASK 0x1FFF
 
 #define W0_REFD 0x2
@@ -62,17 +58,17 @@ void mapper_set_mapid(mapper_t *m, uint8_t id) {
 //returns fault indicator, or 0 if allowed
 static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags) {
 	assert(page<4096);
-	unsigned int ac=(m->desc[page].w1<<16)+m->desc[page].w0;
-	int fault=(ac&access_flags)&(ACCESS_R|ACCESS_W|ACCESS_X);
-	int uid=(ac>>W0_UID_SHIFT)&W0_UID_MASK;
+
+	int fault=((m->desc[page].w1&access_flags)&(ACCESS_R|ACCESS_W|ACCESS_X)) << 16;
+	int uid=(m->desc[page].w0>>W0_UID_SHIFT)&W0_UID_MASK;
 	if ((access_flags&ACCESS_SYSTEM)==0) {
-		if (uid != m->cur_id) fault=(uid<<8|0xff);
+		if (uid != m->cur_id) fault|=(uid<<8|0xff);
 	}
 	if (fault) {
-		MAPPER_LOG_DEBUG("Mapper: Access fault: page ent %x req %x, fault %x (", ac, access_flags, fault);
-		if (fault&(W1_W<<16)) MAPPER_LOG_DEBUG("write violation ");
-		if (fault&(W1_R<<16)) MAPPER_LOG_DEBUG("read violation ");
-		if (fault&(W1_X<<16)) MAPPER_LOG_DEBUG("execute violation ");
+		MAPPER_LOG_DEBUG("Mapper: Access fault: page ent %x%x req %x, fault %x (", m->desc[page].w0, m->desc[page].w1, access_flags, fault);
+		if (fault&(ACCESS_W<<16)) MAPPER_LOG_DEBUG("write violation ");
+		if (fault&(ACCESS_R<<16)) MAPPER_LOG_DEBUG("read violation ");
+		if (fault&(ACCESS_X<<16)) MAPPER_LOG_DEBUG("execute violation ");
 		if (fault&0xff00) MAPPER_LOG_DEBUG("proc uid %d page uid %d ", m->cur_id, uid);
 		MAPPER_LOG_DEBUG(")\n");
 	}
