@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <assert.h>
+#include <stdbool.h>
 #include "csr.h"
 #include "emu.h"
 #include "log.h"
@@ -74,6 +75,7 @@ typedef struct {
 #define SYS_ENTRY_START 2048
 
 #define W1_PAGE_MASK 0x1FFF
+#define W1_INVALID_PAGE 0xFFF
 
 #define W0_REFD 0x2
 #define W0_ALTRD 0x1
@@ -100,17 +102,27 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags,
 
 	int fault=((m->desc[page].w1&access_flags)&(ACCESS_R|ACCESS_W|ACCESS_X)) << 16;
 	int uid=(m->desc[page].w0>>W0_UID_SHIFT)&W0_UID_MASK;
-	if ((access_flags&ACCESS_SYSTEM)==0) {
+
+	// mapper UID checks seem to only apply to writes, not read/execute
+	if (((access_flags&ACCESS_SYSTEM)==0) && (access_flags&ACCESS_W)) {
 		if (uid != m->cur_id) fault|=(uid<<8|0xff);
 	}
 	if (fault) {
+		// PFN 0xfff and no-R/no-W/no-X is for invalid page
+		// (NOTE: 0x1fff appears not to be used here, which would be more obvious)
+		bool invalid_page_map = ((m->desc[page].w1&ACCESS_R) &&
+					 (m->desc[page].w1&ACCESS_W) &&
+					 (m->desc[page].w1&ACCESS_X) &&
+					 ((m->desc[page].w1&W1_PAGE_MASK) == W1_INVALID_PAGE));
+
 		MAPPER_LOG_DEBUG("Mapper: Access fault: address %08x, page %04x ent "
-				 "w0=%04x, w1=%04x (page_perm=%c%c%c), "
+				 "w0=%04x, w1=%04x (page_perm=%c%c%c), %s"
 				 "req %x (req_perm=%c%c%c), %s, fault %x (",
 				a, page, m->desc[page].w0, m->desc[page].w1,
 				((m->desc[page].w1&ACCESS_R)?'-':'R'), // page flags: 1 if *blocked*
 				((m->desc[page].w1&ACCESS_W)?'-':'W'),
 				((m->desc[page].w1&ACCESS_X)?'-':'X'),
+				(invalid_page_map?"not mapped, ":""),
 				access_flags,
 				((access_flags&ACCESS_R)?'R':'-'),     // req flags: 1 if requested
 				((access_flags&ACCESS_W)?'W':'.'),
