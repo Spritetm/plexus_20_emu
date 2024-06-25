@@ -88,6 +88,8 @@ void uart_console_printc(char val) {
 #define REG_BRG 11
 #define REG_VECT 12
 
+#define INTCTL_STATUS_AFFECTS_VECTOR 0x4
+
 
 typedef struct {
 	uint8_t regs[32];
@@ -115,15 +117,39 @@ uart_t *uart_new(const char *name, int is_console) {
 
 static void check_ints(uart_t *u) {
 	int need_int=0;
+	int int_chan=0;
 	for (int c=0; c<2; c++) {
+		bool is_in_loopback = (u->chan[c].regs[0]&1);
 		if (u->chan[c].regs[REG_INTCTL] & 0x18) {
-			if (u->chan[c].has_char_rcv && u->chan[c].ticks_to_loopback==0) {
-				need_int=1;
+			if (u->chan[c].has_char_rcv) {
+				if (is_in_loopback) {
+					if (u->chan[c].ticks_to_loopback==0) {
+						need_int=1;
+						int_chan=c;
+					}
+				} else {
+						need_int=1;
+						int_chan=c;
+				}
 			}
 		}
 	}
 	if (need_int!=u->int_raised) {
-		emu_raise_int(u->chan[0].regs[REG_VECT], need_int?INT_LEVEL_UART:0, 0);
+		if (need_int) {
+			int vect = u->chan[0].regs[REG_VECT];
+			if (  (u->chan[0].regs[REG_INTCTL]&INTCTL_STATUS_AFFECTS_VECTOR)
+			   || (u->chan[1].regs[REG_INTCTL]&INTCTL_STATUS_AFFECTS_VECTOR)) {
+				// we change the vector based on the highest priority thing to communicate
+				vect&=~0x7;
+				if (int_chan) { // B
+					vect|=0x2; // Ch B recv char available
+				} else { // A
+					vect|=0x6; // Ch A recv char available
+				}
+			}
+			//printf("vect 0x%x\n", vect);
+			emu_raise_int(vect, need_int?INT_LEVEL_UART:0, 0); // DMA
+		}
 		u->int_raised=need_int;
 	}
 }
@@ -232,6 +258,21 @@ void uart_tick(uart_t *u, int ticklen_us) {
 			}
 		}
 	}
+
+	// if our console uart has ints enabled on ch B just poll it
+
+	if (u->is_console) {
+
+		int chan = 1; // B
+		if (u->chan[chan].regs[REG_INTCTL] & 0x18) {
+			int in_ch = uart_poll_for_console_character();
+			if (in_ch >= 0) {
+				u->chan[chan].char_rcv = in_ch;
+				u->chan[chan].has_char_rcv = 1;
+			}
+		}
+	}
+
 	check_ints(u);
 }
 
