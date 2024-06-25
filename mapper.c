@@ -104,11 +104,12 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags)
 		if (uid != m->cur_id) fault|=(uid<<8|0xff);
 	}
 	if (fault) {
-		MAPPER_LOG_DEBUG("Mapper: Access fault: page ent w0=%04x, w1=%04x req %x, fault %x (", m->desc[page].w0, m->desc[page].w1, access_flags, fault);
+		MAPPER_LOG_DEBUG("Mapper: Access fault: page %04x ent w0=%04x, w1=%04x req %x, fault %x (", page, m->desc[page].w0, m->desc[page].w1, access_flags, fault);
 		if (fault&(ACCESS_W<<16)) MAPPER_LOG_DEBUG("write violation ");
 		if (fault&(ACCESS_R<<16)) MAPPER_LOG_DEBUG("read violation ");
 		if (fault&(ACCESS_X<<16)) MAPPER_LOG_DEBUG("execute violation ");
 		if (fault&0xff00) MAPPER_LOG_DEBUG("proc uid %d page uid %d ", m->cur_id, uid);
+		if (access_flags&ACCESS_SYSTEM) MAPPER_LOG_DEBUG("system ");
 		MAPPER_LOG_DEBUG(")\n");
 	}
 	return fault;
