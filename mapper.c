@@ -23,8 +23,47 @@ a page size of 4K.
 We have space for 8K physical pages; this means we could map
 to 32MiB of physical RAM.
 
-On write of 32-bit, w0 is msb and w1 lsb.
-Note the RWX bits *disable* that access when 1.
+On write of 32-bit, w0 is msb and w1 lsb.  This happens because our
+CPU emulator supports a 32-bit bus; the 68010 in the Plexus P/20 had
+only a 16-bit bus so there were two read/write cycles.
+
+Note the RWX bits *disable* that access when 1, ie they are "prohibited"
+bits not allow bits.
+
+
+Documentation from the Plexus P/20 specification:
+
+All accesses to main memory go through the map circuit as mentioned
+previously. This function is described here.
+
+The map circuit performs address translation plus access privilege
+checking for each page in memory.
+
+The map registers are addressable only by the Job Processor in system
+space 16 bits at a time.
+
+The addresss are 900000 thru 903FFF (9 0 00up pppp pppp ppw0).
+
+The addressing for the map is given below:
+
+Address decode:
+
+u           = 1 if page is in system space
+ppppppppppp = page number
+w           = Word select
+
+Data decode:
+
+Word 1 = rwxn nnnn nnnn nnnn
+         r   = 0, read enable
+          w  = 0, write enable
+           x = 0, execute enable
+            n nnnn nnnn nnnn = physical page number
+
+Word 0 = iiii iiii xxxx xxrd
+         iiii iiii = user id
+                          r  = 1, set when page is referenced
+                           d = 1, set when page is altered
 */
 
 typedef struct {
