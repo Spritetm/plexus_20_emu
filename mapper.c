@@ -104,12 +104,23 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags)
 		if (uid != m->cur_id) fault|=(uid<<8|0xff);
 	}
 	if (fault) {
-		MAPPER_LOG_DEBUG("Mapper: Access fault: page %04x ent w0=%04x, w1=%04x req %x, fault %x (", page, m->desc[page].w0, m->desc[page].w1, access_flags, fault);
+		MAPPER_LOG_DEBUG("Mapper: Access fault: page %04x ent "
+				 "w0=%04x, w1=%04x (page_perm=%c%c%c), "
+				 "req %x (req_perm=%c%c%c), %s, fault %x (",
+				page, m->desc[page].w0, m->desc[page].w1,
+				((m->desc[page].w1&ACCESS_R)?'-':'R'), // page flags: 1 if *blocked*
+				((m->desc[page].w1&ACCESS_W)?'-':'W'),
+				((m->desc[page].w1&ACCESS_X)?'-':'X'),
+				access_flags,
+				((access_flags&ACCESS_R)?'R':'-'),     // req flags: 1 if requested
+				((access_flags&ACCESS_W)?'W':'.'),
+				((access_flags&ACCESS_X)?'X':'-'),
+				((access_flags&ACCESS_SYSTEM)?"system":"user"),
+				fault);
 		if (fault&(ACCESS_W<<16)) MAPPER_LOG_DEBUG("write violation ");
 		if (fault&(ACCESS_R<<16)) MAPPER_LOG_DEBUG("read violation ");
 		if (fault&(ACCESS_X<<16)) MAPPER_LOG_DEBUG("execute violation ");
 		MAPPER_LOG_DEBUG("proc uid %d %s page uid %d ", uid, (m->cur_id==uid?"=":"!="), m->cur_id);
-		if (access_flags&ACCESS_SYSTEM) MAPPER_LOG_DEBUG("system ");
 		MAPPER_LOG_DEBUG(")\n");
 	}
 	return fault;
