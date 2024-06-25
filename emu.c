@@ -169,6 +169,7 @@ static int check_can_access(mem_range_t *m, unsigned int address) {
 	int ret=1;
 	if (cur_cpu==1 && ((fc_bits&4)==0) && ((m->flags&FLAG_USR_OK)==0)) {
 		EMU_LOG_INFO("Faulting CPU %d for accessing non-RAM address %X in range %s in user mode (fc=%x)\n", cur_cpu, address, m->name, fc_bits);
+		csr_set_access_error(csr, cur_cpu, ACCESS_ERROR_AJOB, address, 0);
 		dump_cpu_state();
 		dump_callstack();
 		ret=0;
@@ -687,6 +688,10 @@ void m68k_trace_cb(unsigned int pc) {
 	}
 	if (0 && pc==0xCFE2) {
 		EMU_LOG_INFO("sched loop\n");
+	}
+	if (0 && pc==0x33d6) {
+		EMU_LOG_INFO("write\n");
+		dump_callstack();
 	}
 
 	//note: pc already is advanced to the next insn when this is called

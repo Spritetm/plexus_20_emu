@@ -137,6 +137,7 @@ void csr_set_access_error(csr_t *csr, int cpu, int type, int addr, int is_write)
 	} else {
 		if (type&ACCESS_ERROR_U) v|=ERR_UBE_JOB;
 		if (type&ACCESS_ERROR_A) v|=ERR_ABE_JOB;
+		if (type&ACCESS_ERROR_AJOB) v|=ERR_AERR_JOB;
 	}
 	if (type&ACCESS_ERROR_MBTO) {
 		v|=ERR_MBTO;

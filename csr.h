@@ -19,7 +19,8 @@ int csr_try_mbus_held(csr_t *csr);
 #define ACCESS_ERROR_OK 0
 #define ACCESS_ERROR_U 1
 #define ACCESS_ERROR_A 2
-#define ACCESS_ERROR_MBTO 3
+#define ACCESS_ERROR_MBTO 4
+#define ACCESS_ERROR_AJOB 8
 void csr_set_access_error(csr_t *csr, int cpu, int type, int addr, int is_write);
 
 
