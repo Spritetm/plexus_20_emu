@@ -104,7 +104,7 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags)
 		if (uid != m->cur_id) fault|=(uid<<8|0xff);
 	}
 	if (fault) {
-		MAPPER_LOG_DEBUG("Mapper: Access fault: page ent %x%x req %x, fault %x (", m->desc[page].w0, m->desc[page].w1, access_flags, fault);
+		MAPPER_LOG_DEBUG("Mapper: Access fault: page ent w0=%04x, w1=%04x req %x, fault %x (", m->desc[page].w0, m->desc[page].w1, access_flags, fault);
 		if (fault&(ACCESS_W<<16)) MAPPER_LOG_DEBUG("write violation ");
 		if (fault&(ACCESS_R<<16)) MAPPER_LOG_DEBUG("read violation ");
 		if (fault&(ACCESS_X<<16)) MAPPER_LOG_DEBUG("execute violation ");
@@ -152,7 +152,7 @@ void mapper_write16(void *obj, unsigned int a, unsigned int val) {
 	} else {
 		m->desc[a/2].w0=val;
 	}
-	if (a/2==2048) MAPPER_LOG_DEBUG("write page %d, w%d. w0=%x, w1=%x\n", a/2, a&1, m->desc[a/2].w0, m->desc[a/2].w1);
+	if (a/2==2048) MAPPER_LOG_DEBUG("write page %d, w%d. w0=%04x, w1=%04x\n", a/2, a&1, m->desc[a/2].w0, m->desc[a/2].w1);
 }
 
 void mapper_write32(void *obj, unsigned int a, unsigned int val) {
@@ -164,7 +164,7 @@ void mapper_write32(void *obj, unsigned int a, unsigned int val) {
 unsigned int mapper_read16(void *obj, unsigned int a) {
 	mapper_t *m=(mapper_t*)obj;
 	a=a/2; //word addr
-	if (a/2==2048) MAPPER_LOG_DEBUG("read page %d, w%d. w0=%x, w1=%x\n", a/2, a&1, m->desc[a/2].w0, m->desc[a/2].w1);
+	if (a/2==2048) MAPPER_LOG_DEBUG("read page %d, w%d. w0=%04x, w1=%04x\n", a/2, a&1, m->desc[a/2].w0, m->desc[a/2].w1);
 	if (a&1) {
 		return m->desc[a/2].w1;
 	} else {
