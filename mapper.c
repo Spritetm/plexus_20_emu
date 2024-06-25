@@ -95,7 +95,7 @@ void mapper_set_mapid(mapper_t *m, uint8_t id) {
 }
 
 //returns fault indicator, or 0 if allowed
-static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags) {
+static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags, unsigned int a) {
 	assert(page<4096);
 
 	int fault=((m->desc[page].w1&access_flags)&(ACCESS_R|ACCESS_W|ACCESS_X)) << 16;
@@ -104,10 +104,10 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags)
 		if (uid != m->cur_id) fault|=(uid<<8|0xff);
 	}
 	if (fault) {
-		MAPPER_LOG_DEBUG("Mapper: Access fault: page %04x ent "
+		MAPPER_LOG_DEBUG("Mapper: Access fault: address %08x, page %04x ent "
 				 "w0=%04x, w1=%04x (page_perm=%c%c%c), "
 				 "req %x (req_perm=%c%c%c), %s, fault %x (",
-				page, m->desc[page].w0, m->desc[page].w1,
+				a, page, m->desc[page].w0, m->desc[page].w1,
 				((m->desc[page].w1&ACCESS_R)?'-':'R'), // page flags: 1 if *blocked*
 				((m->desc[page].w1&ACCESS_W)?'-':'W'),
 				((m->desc[page].w1&ACCESS_X)?'-':'X'),
@@ -120,7 +120,7 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags)
 		if (fault&(ACCESS_W<<16)) MAPPER_LOG_DEBUG("write violation ");
 		if (fault&(ACCESS_R<<16)) MAPPER_LOG_DEBUG("read violation ");
 		if (fault&(ACCESS_X<<16)) MAPPER_LOG_DEBUG("execute violation ");
-		MAPPER_LOG_DEBUG("proc uid %d %s page uid %d ", uid, (m->cur_id==uid?"=":"!="), m->cur_id);
+		MAPPER_LOG_DEBUG("proc uid %d %s page uid %d", uid, (m->cur_id==uid?"=":"!="), m->cur_id);
 		MAPPER_LOG_DEBUG(")\n");
 	}
 	return fault;
@@ -140,7 +140,7 @@ int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags) {
 	int p=a>>12; //4K pages
 	assert(p<=2048 && "out of range addr");
 	if (access_flags&ACCESS_SYSTEM) p+=2048;
-	int r=access_allowed_page(m, p, access_flags);
+	int r=access_allowed_page(m, p, access_flags, a);
 	if (r && log_level_active(LOG_SRC_MAPPER, LOG_DEBUG)) {
 		MAPPER_LOG_DEBUG("Mapper: Access fault at addr %x page %d. CPU state:\n", a, p);
 		dump_cpu_state();
