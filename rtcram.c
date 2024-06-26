@@ -6,6 +6,7 @@
 #include "emu.h"
 #include "log.h"
 #include "rtcram.h"
+#include "emscripten_env.h"
 
 // Debug logging (shared with the RTC clock portion)
 #define RTC_LOG(msg_level, format_and_args...) \
@@ -41,6 +42,9 @@ void rtcram_write8(void *obj, unsigned int a, unsigned int val) {
 	} else {
 		RTC_LOG_WARNING("RTC: Failed to persist RTC RAM to %s\n", r->filename);
 	}
+#ifdef __EMSCRIPTEN__
+	emscripten_syncfs();
+#endif
 }
 
 void rtcram_write16(void *obj, unsigned int a, unsigned int val) {
