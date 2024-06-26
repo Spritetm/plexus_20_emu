@@ -63,9 +63,12 @@ void mapper_set_mapid(mapper_t *m, uint8_t id) {
 static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags) {
 	assert(page<4096);
 	unsigned int ac=(m->desc[page].w1<<16)+m->desc[page].w0;
+	//Set fault to the access flags we need but are not set in the page.
 	int fault=(ac&access_flags)&(ACCESS_R|ACCESS_W|ACCESS_X);
 	int uid=(ac>>W0_UID_SHIFT)&W0_UID_MASK;
 	if ((access_flags&ACCESS_SYSTEM)==0) {
+		//If there's an uid fault, we set the lower 8 bits to 0xff
+		//and make the next 8 bits the uid.
 		if (uid != m->cur_id) fault=(uid<<8|0xff);
 	}
 	if (fault) {
@@ -73,7 +76,7 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags)
 		if (fault&(W1_W<<16)) MAPPER_LOG_DEBUG("write violation ");
 		if (fault&(W1_R<<16)) MAPPER_LOG_DEBUG("read violation ");
 		if (fault&(W1_X<<16)) MAPPER_LOG_DEBUG("execute violation ");
-		if (fault&0xff00) MAPPER_LOG_DEBUG("proc uid %d page uid %d ", m->cur_id, uid);
+		if (fault&0xff) MAPPER_LOG_DEBUG("proc uid %d page uid %d ", m->cur_id, uid);
 		MAPPER_LOG_DEBUG(")\n");
 	}
 	return fault;
@@ -117,7 +120,6 @@ void mapper_write16(void *obj, unsigned int a, unsigned int val) {
 	} else {
 		m->desc[a/2].w0=val;
 	}
-	if (a/2==2048) MAPPER_LOG_DEBUG("write page %d, w%d. w0=%x, w1=%x\n", a/2, a&1, m->desc[a/2].w0, m->desc[a/2].w1);
 }
 
 void mapper_write32(void *obj, unsigned int a, unsigned int val) {
@@ -129,7 +131,6 @@ void mapper_write32(void *obj, unsigned int a, unsigned int val) {
 unsigned int mapper_read16(void *obj, unsigned int a) {
 	mapper_t *m=(mapper_t*)obj;
 	a=a/2; //word addr
-	if (a/2==2048) MAPPER_LOG_DEBUG("read page %d, w%d. w0=%x, w1=%x\n", a/2, a&1, m->desc[a/2].w0, m->desc[a/2].w1);
 	if (a&1) {
 		return m->desc[a/2].w1;
 	} else {
@@ -140,9 +141,9 @@ unsigned int mapper_read16(void *obj, unsigned int a) {
 void mapper_write8(void *obj, unsigned int a, unsigned int val) {
 	int v=mapper_read16(obj, a&~1);
 	if (a&1) {
-		v=(v&0xFF00)|val;
+		v=(v&0xFF00)|(val&0xff);
 	} else {
-		v=(v&0xFF)|(val<<8);
+		v=(v&0xFF)|((val<<8)&0xff000);
 	}
 	mapper_write16(obj, a&~1, v);
 }

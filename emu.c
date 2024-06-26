@@ -314,14 +314,15 @@ static int check_mem_access(unsigned int address, int flags) {
 	int access=mapper_access_allowed(mapper, address, flags);
 	if (access!=ACCESS_ERROR_OK) {
 		if (log_level_active(LOG_SRC_MAPPER, LOG_DEBUG)) {
-			EMU_LOG_INFO("Illegal access! Access %x\n", address);
+			EMU_LOG_INFO("Illegal access! Access %x. Generating bus error.\n", address);
 			dump_cpu_state();
 			dump_callstack();
 		}
 		csr_set_access_error(csr, cur_cpu, access, address, flags&ACCESS_W);
 
-		//note THIS WILL NOT RETURN!
-		//(m68ki_exception_bus_error ends with a longjmp)
+		//note: THIS WILL NOT RETURN!
+		//(m68k_pulse_bus error calls m68ki_exception_bus_error, which
+		//ends with a longjmp.)
 		m68k_pulse_bus_error();
 		return 0;
 	}
@@ -619,10 +620,6 @@ void setup_nop(const char *name) {
 void m68k_fc_cb(unsigned int fc) {
 	fc_bits=fc;
 	mapper_set_sysmode(mapper, fc&4);
-	//Guess: mapid resets on int?
-	if ((fc&0x7)==7) {
-		mapper_set_mapid(mapper, 0);
-	}
 }
 
 //has a level if triggered, otherwise 0
@@ -703,7 +700,7 @@ void m68k_trace_cb(unsigned int pc) {
 	if (ir==0x4E75) callstack_ptr[cur_cpu]--;
 	prev_pc=pc;
 	unsigned int sr=m68k_get_reg(NULL, M68K_REG_SR);
-	if (do_tracefile) fprintf(tracefile, "%d %d %06x %x\n", insn_id, cur_cpu, pc, sr);
+	if (do_tracefile&(1<<cur_cpu)) fprintf(tracefile, "%d %d %06x %x\n", insn_id, cur_cpu, pc, sr);
 	if (!trace_enabled) return;
 	dump_cpu_state();
 }
@@ -747,7 +744,8 @@ static void sig_hdl(int sig) {
 void emu_start(emu_cfg_t *cfg) {
 	signal(SIGQUIT, sig_hdl); // ctrl+\ to dump status
 	tracefile=fopen("trace.txt","w");
-//	do_tracefile=1;
+//Note: this is a bitmask for which CPU gets logged. (1<<0) for dma, (1<<1) for job cpu.
+//	do_tracefile=(1<<1);
 	setup_ram("RAM");
 	setup_ram("SRAM");
 	setup_rtcram("RTC_RAM", cfg->rtcram);

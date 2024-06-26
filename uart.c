@@ -205,7 +205,7 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 	// Poll for console input if the emulated device might be expecting data
 	// (done at top of function because .has_char_rcv being set will determine
 	// if the character is ever read; so we cannot only do it in read character)
-	if (u->is_console && !is_in_loopback && !u->chan[chan].has_char_rcv) {
+	if (chan==1 && u->is_console && !is_in_loopback && !u->chan[chan].has_char_rcv) {
 		int in_ch = uart_poll_for_console_character();
 		if (in_ch >= 0) {
 			u->chan[chan].char_rcv = in_ch;

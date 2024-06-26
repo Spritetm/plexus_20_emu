@@ -251,7 +251,7 @@ unsigned int csr_read32(void *obj, unsigned int a) {
 unsigned int csr_read8(void *obj, unsigned int a) {
 	//fake using read16
 	if (a&1) {
-		return csr_read16(obj, a-1);
+		return csr_read16(obj, a-1)&0xff;
 	} else {
 		return csr_read16(obj, a)>>8;
 	}

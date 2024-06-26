@@ -40,6 +40,8 @@ static int hd_handle_cmd(scsi_dev_t *dev, uint8_t *cd, int len) {
 		return SCSI_DEV_DATA_IN;
 	} else if (cd[0]==0x15) { //mode select
 		return SCSI_DEV_DATA_OUT;
+	} else if (cd[0]==0xa) { //write
+		return SCSI_DEV_DATA_IN;
 	} else if (cd[0]==0xC2) {
 		//omti config cmd?
 		return SCSI_DEV_DATA_IN;
@@ -72,7 +74,7 @@ int hd_handle_data_in(scsi_dev_t *dev, uint8_t *msg, int buflen) {
 		//omti config command?
 	} else {
 		printf("Unknown command: 0x%x\n", hd->cmd[0]);
-		assert(0 && "hd_handle_data_in: unknown cmd");
+//		assert(0 && "hd_handle_data_in: unknown cmd");
 	}
 	return 0;
 }
