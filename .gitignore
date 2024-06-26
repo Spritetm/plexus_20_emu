@@ -4,3 +4,11 @@ emu
 trace.txt
 plexus-sanitized.img
 rtcram.bin
+U15-MERGED.BIN
+U17-MERGED.BIN
+plexem.data
+plexem.js
+plexem.mjs
+plexem.wasm
+plexem.wasm.map
+plexem.worker.mjs

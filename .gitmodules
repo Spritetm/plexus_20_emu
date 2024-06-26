@@ -1,0 +1,3 @@
+[submodule "xterm-pty"]
+	path = xterm-pty
+	url = https://github.com/mame/xterm-pty.git

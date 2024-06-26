@@ -5,6 +5,11 @@
 #include <stdlib.h>
 #include <time.h>
 #include <signal.h>
+#include <sys/time.h>
+#include <unistd.h>
+#ifdef __EMSCRIPTEN__
+#include "emscripten.h"
+#endif
 #include "Musashi/m68k.h"
 #include "uart.h"
 #include "ramrom.h"
@@ -741,6 +746,9 @@ static void sig_hdl(int sig) {
 	m68k_modify_timeslice(0);
 }
 
+//if running realtime, we'll sleep for a bit every SLEEP_EVERY_US us
+#define SLEEP_EVERY_US 10000 //10ms = 100Hz
+
 void emu_start(emu_cfg_t *cfg) {
 	signal(SIGQUIT, sig_hdl); // ctrl+\ to dump status
 	tracefile=fopen("trace.txt","w");
@@ -784,6 +792,10 @@ void emu_start(emu_cfg_t *cfg) {
 	int cpu_in_reset[2]={0};
 	int cycles_remaining[2]={0};
 
+	struct timeval last_delay_at;
+	int emulated_us_since_last_delay=0;
+	gettimeofday(&last_delay_at, NULL);
+
 	while(1) {
 		for (int i=0; i<2; i++) {
 			m68k_set_context(cpuctx[i]);
@@ -822,6 +834,25 @@ void emu_start(emu_cfg_t *cfg) {
 				dump_cpu_state();
 				dump_callstack();
 				m68k_get_context(cpuctx[i]);
+			}
+		}
+		if (cfg->realtime) {
+			emulated_us_since_last_delay+=10;
+
+			struct timeval time_since_last_delay;
+			struct timeval now;
+			gettimeofday(&now, NULL);
+			timersub(&now, &last_delay_at, &time_since_last_delay);
+			if (time_since_last_delay.tv_sec!=0 || time_since_last_delay.tv_usec>=SLEEP_EVERY_US) {
+				int w=emulated_us_since_last_delay-time_since_last_delay.tv_usec;
+				if (w<1000) w=1000; //sleep at least a ms
+#ifdef __EMSCRIPTEN__
+				emscripten_sleep(w/1000);
+#else
+				usleep(w);
+#endif
+				gettimeofday(&last_delay_at, NULL);
+				emulated_us_since_last_delay=0;
 			}
 		}
 	}

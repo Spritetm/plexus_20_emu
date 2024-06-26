@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css" />
+  </head>
+  <body>
+    <div id="terminal"></div>
+    <script type="module">
+      import 'https://unpkg.com/xterm@5.3.0/lib/xterm.js';
+      import 'https://unpkg.com/xterm-pty/index.js';
+      import initEmscripten from './plexem.mjs';
+
+      var xterm = new Terminal();
+      xterm.open(document.getElementById('terminal'));
+
+      // Create master/slave objects
+      const { master, slave } = openpty();
+
+      // Connect the master object to xterm.js
+      xterm.loadAddon(master);
+
+      await initEmscripten({
+        pty: slave
+      });
+    </script>
+  </body>
+</html>

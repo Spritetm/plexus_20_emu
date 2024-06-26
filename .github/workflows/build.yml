@@ -23,7 +23,6 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       - uses: actions/checkout@v4
-      - name: Build
+      - name: Build C program
         working-directory: ${{ github.workspace }}/
         run: make
-

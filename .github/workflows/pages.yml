@@ -1,0 +1,64 @@
+
+name: CI
+
+permissions:
+  id-token: write
+  pages: write
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: [ "main" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  emscripten:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout submodules
+        working-directory: ${{ github.workspace }}/
+        run: git submodule update --recursive --init
+      - name: Checkout binaries for web version
+        working-directory: ${{ github.workspace }}/
+        run: |
+         git clone --depth=1 https://github.com/misterblack1/plexus-p20.git
+         mv plexus-p20/ROMs/U17-MERGED.BIN plexus-p20/ROMs/U15-MERGED.BIN .
+         gunzip < plexus-p20/disk/plexus-sanitized.img.gz > plexus-sanitized.img
+      - name: Get emscripten
+        working-directory: ${{ github.workspace }}/
+        run: |
+         git clone --depth=1 https://github.com/emscripten-core/emsdk.git
+         cd emsdk; ./emsdk install latest; ./emsdk activate latest
+      - name: Generate musashi headers
+        working-directory: ${{ github.workspace }}/
+        run: cd Musashi; make
+      - name: Compile for web
+        working-directory: ${{ github.workspace }}/
+        run: source ./emsdk/emsdk_env.sh; ls -l; make plexem.mjs
+      - name: Move results
+        working-directory: ${{ github.workspace }}/
+        run: mkdir web; mv plexem.* web; mv web/plexem.html web/index.html
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'web'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: emscripten
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+

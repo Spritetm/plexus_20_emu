@@ -60,8 +60,14 @@ int main(int argc, char **argv) {
 	static_assert(sizeof(level_str)/sizeof(level_str[0])==LOG_LVL_MAX,
 					"level_str array out of sync");
 	emu_cfg_t cfg={
+#ifdef __EMSCRIPTEN__
+		.u15_rom="U15-MERGED.BIN",
+		.u17_rom="U17-MERGED.BIN",
+		.realtime=1,
+#else
 		.u15_rom="../plexus-p20/ROMs/U15-MERGED.BIN",
 		.u17_rom="../plexus-p20/ROMs/U17-MERGED.BIN",
+#endif
 		.hd0img="plexus-sanitized.img",
 		.rtcram="rtcram.bin"
 	};
@@ -73,6 +79,8 @@ int main(int argc, char **argv) {
 		} else if (strcmp(argv[i], "-u17")==0 && i+1<argc) {
 			i++;
 			cfg.u15_rom=argv[i];
+		} else if (strcmp(argv[i], "-r")==0) {
+			cfg.realtime=1;
 		} else if (strcmp(argv[i], "-l")==0 && i+1<argc) {
 			i++;
 			error|=parse_loglvl_str(argv[i]);
@@ -87,6 +95,7 @@ int main(int argc, char **argv) {
 		printf("Usage: %s [args]\n", argv[0]);
 		printf(" -u15 Path to U15 rom file\n");
 		printf(" -u17 Path to U17 rom file\n");
+		printf(" -r Try to run at realtime speeds\n");
 		printf(" -l module=level - set logging level of module to specified level\n");
 		printf(" -l level - Set overal log level to specified level\n");
 		printf("Modules: ");
