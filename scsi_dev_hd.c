@@ -7,6 +7,11 @@
 #include "scsi.h"
 #include "emu.h"
 #include "log.h"
+#include "emscripten_env.h"
+
+//Might need to change if e.g. the backing file changes for the web version.
+#define COW_VERSION_MAJOR 0
+#define COW_VERSION_MINOR 0
 
 typedef struct {
 	scsi_dev_t dev;
@@ -42,6 +47,8 @@ static void write_block(scsi_hd_t *hd, int lba, uint8_t *data) {
 			perror("opening cow file for write");
 			exit(1);
 		}
+		uint8_t ver[2]={COW_VERSION_MAJOR, COW_VERSION_MINOR};
+		fwrite(ver, 2, 1, f);
 		fwrite(data, 512, 1, f);
 		fclose(f);
 	} else {
@@ -54,9 +61,16 @@ static void read_block(scsi_hd_t *hd, int lba, uint8_t *data) {
 	if (hd->cow_dir) {
 		FILE *f=open_cow_file(hd, lba, "rb");
 		if (f) {
-			fread(data, 512, 1, f);
-			fclose(f);
-			return;
+			uint8_t ver[2];
+			fread(ver, 2, 1, f);
+			if (ver[0]==COW_VERSION_MAJOR && ver[1]==COW_VERSION_MINOR) {
+				fread(data, 512, 1, f);
+				fclose(f);
+				return;
+			} else {
+				//not the same version; ignore
+				fclose(f);
+			}
 		}
 	}
 	fseek(hd->hdfile, lba*512, SEEK_SET);
@@ -128,6 +142,9 @@ static void hd_handle_data_out(scsi_dev_t *dev, uint8_t *msg, int len) {
 		for (int i=0; i<blen/512; i++) {
 			write_block(hd, lba+i, &msg[i*512]);
 		}
+#ifdef __EMSCRIPTEN__
+		emscripten_syncfs();
+#endif
 	}
 }
 

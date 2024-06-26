@@ -24,10 +24,11 @@ EMCC_ARGS += --js-library xterm-pty/emscripten-pty.js
 EMCC_ARGS += --preload-file plexus-sanitized.img
 EMCC_ARGS += --preload-file U15-MERGED.BIN
 EMCC_ARGS += --preload-file U17-MERGED.BIN
+EMCC_ARGS += -lidbfs.js
 EMCC_ARGS += -O2 -gsource-map --source-map-base=./
 
 plexem.mjs: $(SRC)
-	emcc -o $@ $(EMCC_ARGS) $^ -lm 
+	emcc -o $@ $(EMCC_ARGS) $^ emscripten_env.c -lm 
 
 clean:
 	rm -f $(SRC:.c=.o) 

@@ -4,6 +4,7 @@
 #include <string.h>
 #include "emu.h"
 #include "log.h"
+#include "emscripten_env.h"
 
 const char *log_str[]={
 	[LOG_SRC_UART]="uart",
@@ -63,14 +64,19 @@ int main(int argc, char **argv) {
 #ifdef __EMSCRIPTEN__
 		.u15_rom="U15-MERGED.BIN",
 		.u17_rom="U17-MERGED.BIN",
+		.cow_dir="persist/cow",
+		.rtcram="persist/rtcram.bin",
 		.realtime=1,
 #else
 		.u15_rom="../plexus-p20/ROMs/U15-MERGED.BIN",
 		.u17_rom="../plexus-p20/ROMs/U17-MERGED.BIN",
+		.rtcram="rtcram.bin",
 #endif
 		.hd0img="plexus-sanitized.img",
-		.rtcram="rtcram.bin"
 	};
+#ifdef __EMSCRIPTEN__
+	emscripten_init();
+#endif
 	int error=0;
 	for (int i=1; i<argc; i++) {
 		if (strcmp(argv[i], "-u15")==0 && i+1<argc) {

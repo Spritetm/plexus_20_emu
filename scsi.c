@@ -29,7 +29,7 @@ struct scsi_t {
 	uint8_t cmd[10];
 	int selected;
 	int op_timeout_us;
-	uint8_t databuf[256*512]
+	uint8_t databuf[256*512];
 };
 
 /*
