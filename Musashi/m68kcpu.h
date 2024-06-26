@@ -1006,6 +1006,7 @@ typedef struct
 	uint16 mmu_tmp_rw;      /* temporary hack: read/write (1/0) for the mmu */
 	uint8 mmu_tmp_sz;       /* temporary hack: size for mmu */
 	uint32 mmu_tmp_buserror_newpc; /* pc after the erroneous instruction, for rr */
+	uint32 mmu_tmp_buserror_address; /* fault address */
 
 	uint16 mmu_tmp_buserror_fc;   /* temporary hack: (first) bus error fc */
 	uint16 mmu_tmp_buserror_rw;   /* temporary hack: (first) bus error rw */
@@ -1054,6 +1055,7 @@ static inline uint m68ki_read_imm_16(void)
 	m68ki_cpu.mmu_tmp_fc = m68ki_cpu.s_flag | FUNCTION_CODE_USER_PROGRAM;
 	m68ki_cpu.mmu_tmp_rw = 1;
 	m68ki_cpu.mmu_tmp_sz = 2;
+	m68ki_cpu.mmu_tmp_buserror_address=REG_PC-2;
 
 	m68ki_set_fc(FLAG_S | FUNCTION_CODE_USER_PROGRAM); /* auto-disable (see m68kcpu.h) */
 	m68ki_check_address_error(REG_PC, MODE_READ, FLAG_S | FUNCTION_CODE_USER_PROGRAM); /* auto-disable (see m68kcpu.h) */
@@ -1103,6 +1105,7 @@ static inline uint m68ki_read_imm_32(void)
 	m68ki_cpu.mmu_tmp_fc = m68ki_cpu.s_flag | FUNCTION_CODE_USER_PROGRAM;
 	m68ki_cpu.mmu_tmp_rw = 1;
 	m68ki_cpu.mmu_tmp_sz = 4;
+	m68ki_cpu.mmu_tmp_buserror_address=REG_PC-4;
 
 #if M68K_EMULATE_PREFETCH
 	uint temp_val;
@@ -1147,6 +1150,7 @@ static inline uint m68ki_read_8_fc(uint address, uint fc)
 	m68ki_cpu.mmu_tmp_fc = fc;
 	m68ki_cpu.mmu_tmp_rw = 1;
 	m68ki_cpu.mmu_tmp_sz = 1;
+	m68ki_cpu.mmu_tmp_buserror_address=address;
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
@@ -1161,6 +1165,7 @@ static inline uint m68ki_read_16_fc(uint address, uint fc)
 	m68ki_cpu.mmu_tmp_fc = fc;
 	m68ki_cpu.mmu_tmp_rw = 1;
 	m68ki_cpu.mmu_tmp_sz = 2;
+	m68ki_cpu.mmu_tmp_buserror_address=address;
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 	m68ki_check_address_error_010_less(address, MODE_READ, fc); /* auto-disable (see m68kcpu.h) */
 
@@ -1176,6 +1181,7 @@ static inline uint m68ki_read_32_fc(uint address, uint fc)
 	m68ki_cpu.mmu_tmp_fc = fc;
 	m68ki_cpu.mmu_tmp_rw = 1;
 	m68ki_cpu.mmu_tmp_sz = 4;
+	m68ki_cpu.mmu_tmp_buserror_address=address;
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 	m68ki_check_address_error_010_less(address, MODE_READ, fc); /* auto-disable (see m68kcpu.h) */
 
@@ -1192,6 +1198,7 @@ static inline void m68ki_write_8_fc(uint address, uint fc, uint value)
 	m68ki_cpu.mmu_tmp_fc = fc;
 	m68ki_cpu.mmu_tmp_rw = 0;
 	m68ki_cpu.mmu_tmp_sz = 1;
+	m68ki_cpu.mmu_tmp_buserror_address=address;
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
@@ -1206,6 +1213,7 @@ static inline void m68ki_write_16_fc(uint address, uint fc, uint value)
 	m68ki_cpu.mmu_tmp_fc = fc;
 	m68ki_cpu.mmu_tmp_rw = 0;
 	m68ki_cpu.mmu_tmp_sz = 2;
+	m68ki_cpu.mmu_tmp_buserror_address=address;
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 	m68ki_check_address_error_010_less(address, MODE_WRITE, fc); /* auto-disable (see m68kcpu.h) */
 
@@ -1221,6 +1229,7 @@ static inline void m68ki_write_32_fc(uint address, uint fc, uint value)
 	m68ki_cpu.mmu_tmp_fc = fc;
 	m68ki_cpu.mmu_tmp_rw = 0;
 	m68ki_cpu.mmu_tmp_sz = 4;
+	m68ki_cpu.mmu_tmp_buserror_address=address;
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 	m68ki_check_address_error_010_less(address, MODE_WRITE, fc); /* auto-disable (see m68kcpu.h) */
 
@@ -1238,6 +1247,7 @@ static inline void m68ki_write_32_pd_fc(uint address, uint fc, uint value)
 	m68ki_cpu.mmu_tmp_fc = fc;
 	m68ki_cpu.mmu_tmp_rw = 0;
 	m68ki_cpu.mmu_tmp_sz = 4;
+	m68ki_cpu.mmu_tmp_buserror_address=address;
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 	m68ki_check_address_error_010_less(address, MODE_WRITE, fc); /* auto-disable (see m68kcpu.h) */
 
@@ -1695,7 +1705,7 @@ static inline void m68ki_stack_frame_buserr(uint sr)
 /* Format 8 stack frame (68010).
  * 68010 only.  This is the 29 word bus/address error frame.
  */
-static inline void m68ki_stack_frame_1000(uint pc, uint sr, uint vector)
+static inline void m68ki_stack_frame_1000(uint pc, uint sr, uint vector, uint fault_address)
 {
 	int orig_rw = m68ki_cpu.mmu_tmp_buserror_rw;    // this gets splatted by the following pushes, so save it now
 	int orig_fc = m68ki_cpu.mmu_tmp_buserror_fc;
@@ -1732,7 +1742,7 @@ static inline void m68ki_stack_frame_1000(uint pc, uint sr, uint vector)
 	m68ki_fake_push_16();
 
 	/* FAULT ADDRESS */
-	m68ki_push_32(0);
+	m68ki_push_32(fault_address);
 
 	/* SPECIAL STATUS WORD */
 	m68ki_push_16(orig_fc | 
@@ -1956,6 +1966,7 @@ static inline void m68ki_exception_bus_error(void)
 	m68ki_cpu.mmu_tmp_buserror_fc = m68ki_cpu.mmu_tmp_fc;
 	m68ki_cpu.mmu_tmp_buserror_rw = m68ki_cpu.mmu_tmp_rw;
 	m68ki_cpu.mmu_tmp_buserror_sz = m68ki_cpu.mmu_tmp_sz;
+	unsigned int ex_addr=m68ki_cpu.mmu_tmp_buserror_address;
 
 	/* If we were processing a bus error, address error, or reset,
 	 * while writing the stack frame, this is a catastrophic failure.
@@ -1980,7 +1991,7 @@ static inline void m68ki_exception_bus_error(void)
 
 	/* Note: This is implemented for 68010 only! */
 	m68ki_cpu.mmu_tmp_buserror_newpc=REG_PC;
-	m68ki_stack_frame_1000(REG_PPC, sr, EXCEPTION_BUS_ERROR);
+	m68ki_stack_frame_1000(REG_PPC, sr, EXCEPTION_BUS_ERROR, ADDRESS_68K(ex_addr));
 
 	m68ki_jump_vector(EXCEPTION_BUS_ERROR);
 
