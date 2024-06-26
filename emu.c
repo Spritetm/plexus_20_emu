@@ -765,7 +765,7 @@ void emu_start(emu_cfg_t *cfg) {
 	uart[2]=setup_uart("UART_C", 0);
 	uart[3]=setup_uart("UART_D", 0);
 	scsi_t *scsi=setup_scsi("SCSIBUF");
-	scsi_dev_t *hd1=scsi_dev_hd_new(cfg->hd0img);
+	scsi_dev_t *hd1=scsi_dev_hd_new(cfg->hd0img, cfg->cow_dir);
 	scsi_add_dev(scsi, hd1, 0);
 	csr=setup_csr("CSR", "MMIO_WR", "SCSIBUF");
 	mapper=setup_mapper("MAPPER", "MAPRAM", "RAM");

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <sys/stat.h>
 #include "scsi.h"
 #include "emu.h"
 #include "log.h"
@@ -11,6 +12,7 @@ typedef struct {
 	scsi_dev_t dev;
 	FILE *hdfile;
 	uint8_t cmd[10];
+	char *cow_dir;
 } scsi_hd_t;
 
 
@@ -26,6 +28,41 @@ static const uint8_t sense[]={
 	0,0,0,0	//sense key specific
 };
 
+static FILE *open_cow_file(scsi_hd_t *hd, int lba, const char *mode) {
+	char buf[1024];
+	snprintf(buf, sizeof(buf), "%s/cow-data-%06d.bin", hd->cow_dir, lba);
+	FILE *f=fopen(buf, mode);
+	return f;
+}
+
+static void write_block(scsi_hd_t *hd, int lba, uint8_t *data) {
+	if (hd->cow_dir) {
+		FILE *f=open_cow_file(hd, lba, "w+b");
+		if (!f) {
+			perror("opening cow file for write");
+			exit(1);
+		}
+		fwrite(data, 512, 1, f);
+		fclose(f);
+	} else {
+		fseek(hd->hdfile, lba*512, SEEK_SET);
+		fwrite(data, 512, 1, hd->hdfile);
+	}
+}
+
+static void read_block(scsi_hd_t *hd, int lba, uint8_t *data) {
+	if (hd->cow_dir) {
+		FILE *f=open_cow_file(hd, lba, "rb");
+		if (f) {
+			fread(data, 512, 1, f);
+			fclose(f);
+			return;
+		}
+	}
+	fseek(hd->hdfile, lba*512, SEEK_SET);
+	fread(data, 512, 1, hd->hdfile);
+}
+
 static int hd_handle_cmd(scsi_dev_t *dev, uint8_t *cd, int len) {
 	scsi_hd_t *hd=(scsi_hd_t*)dev;
 	if (len<6 || len>10) return SCSI_DEV_ERR;
@@ -34,17 +71,17 @@ static int hd_handle_cmd(scsi_dev_t *dev, uint8_t *cd, int len) {
 		return SCSI_DEV_STATUS;
 	} else if (cd[0]==1) {
 		return SCSI_DEV_STATUS;
-	} else if (cd[0]==3) {
+	} else if (cd[0]==3) { //sense
 		return SCSI_DEV_DATA_IN;
-	} else if (cd[0]==8) {
+	} else if (cd[0]==8) { //read
 		return SCSI_DEV_DATA_IN;
 	} else if (cd[0]==0x15) { //mode select
 		return SCSI_DEV_DATA_OUT;
 	} else if (cd[0]==0xa) { //write
-		return SCSI_DEV_DATA_IN;
+		return SCSI_DEV_DATA_OUT;
 	} else if (cd[0]==0xC2) {
 		//omti config cmd?
-		return SCSI_DEV_DATA_IN;
+		return SCSI_DEV_DATA_OUT;
 	} else {
 		printf("hd: unsupported cmd %d\n", cd[0]);
 		exit(1);
@@ -66,15 +103,15 @@ int hd_handle_data_in(scsi_dev_t *dev, uint8_t *msg, int buflen) {
 		int tlen=hd->cmd[4]; //note 0 means 256 blocks...
 		int blen=tlen*512;
 		if (blen>buflen) blen=buflen;
-		fseek(hd->hdfile, lba*512, SEEK_SET);
-		fread(msg, blen, 1, hd->hdfile);
-//		printf("Read %d bytes from LB %d\n", blen, lba);
+		for (int i=0; i<blen/512; i++) {
+			read_block(hd, lba+i, &msg[i*512]);
+		}
 		return blen;
 	} else if (hd->cmd[0]==0xc2) {
 		//omti config command?
 	} else {
-		printf("Unknown command: 0x%x\n", hd->cmd[0]);
-//		assert(0 && "hd_handle_data_in: unknown cmd");
+//		printf("Unknown command: 0x%x\n", hd->cmd[0]);
+		assert(0 && "hd_handle_data_in: unknown cmd");
 	}
 	return 0;
 }
@@ -83,6 +120,14 @@ static void hd_handle_data_out(scsi_dev_t *dev, uint8_t *msg, int len) {
 	scsi_hd_t *hd=(scsi_hd_t*)dev;
 	if (hd->cmd[0]==0x15) { //mode select
 		//ignore
+	} else if (hd->cmd[0]==0xa) { //write
+		int lba=(hd->cmd[1]<<16)+(hd->cmd[2]<<8)+(hd->cmd[3]);
+		int tlen=hd->cmd[4]; //note 0 means 256 blocks...
+		int blen=tlen*512;
+		if (blen>len) blen=len;
+		for (int i=0; i<blen/512; i++) {
+			write_block(hd, lba+i, &msg[i*512]);
+		}
 	}
 }
 
@@ -92,9 +137,28 @@ static int hd_handle_status(scsi_dev_t *dev) {
 	return 0; //ok
 }
 
-scsi_dev_t *scsi_dev_hd_new(const char *imagename) {
+scsi_dev_t *scsi_dev_hd_new(const char *imagename, const char *cow_dir) {
 	scsi_hd_t *hd=calloc(sizeof(scsi_hd_t), 1);
-	hd->hdfile=fopen(imagename, "rb");
+	if (cow_dir && cow_dir[0]!=0) {
+		//we leave the original image intact and use copy-on-write to save
+		//the new data
+		hd->cow_dir=strdup(cow_dir);
+		struct stat st;
+		mkdir(cow_dir, 0755); //may fail, we don't care
+		if (stat(cow_dir, &st) == -1) {
+			perror(cow_dir);
+			exit(1);
+		}
+		if ((st.st_mode & S_IFMT)!=S_IFDIR) {
+			printf("%s: not a dir\n", cow_dir);
+			exit(1);
+		}
+		hd->hdfile=fopen(imagename, "rb");
+	} else {
+		//open image r/w
+		hd->hdfile=fopen(imagename, "r+b");
+		hd->cow_dir=NULL;
+	}
 	if (!hd->hdfile) {
 		perror(imagename);
 		free(hd);

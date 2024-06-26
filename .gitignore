@@ -12,3 +12,4 @@ plexem.mjs
 plexem.wasm
 plexem.wasm.map
 plexem.worker.mjs
+cow/

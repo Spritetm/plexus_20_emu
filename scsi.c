@@ -29,7 +29,7 @@ struct scsi_t {
 	uint8_t cmd[10];
 	int selected;
 	int op_timeout_us;
-	uint8_t databuf[4096]; //todo: dynamic resize?
+	uint8_t databuf[256*512]
 };
 
 /*
@@ -145,13 +145,14 @@ enum {
 	STATE_CMD_DIN,
 	STATE_CMD_DIN_RCV,
 	STATE_CMD_DOUT,
+	STATE_CMD_DOUT_FIN,
 	STATE_STATUS,
 	STATE_MSGIN,
 	STATE_SELECT_NODEV
 };
 
 const char *state_str[]={
-	"BUS_FREE", "SELECT", "RESELECT", "CMD_DIN", "CMD_DIN_RCV", "CMD_DOUT", "STATUS", "MSGIN", "SELECT_NODEV"
+	"BUS_FREE", "SELECT", "RESELECT", "DIN", "DIN_RCV", "DOUT", "DOUT_FIN", "STATUS", "MSGIN", "SELECT_NODEV"
 };
 
 const char *bit_str[]={
@@ -315,8 +316,7 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 			val&=~(O_SCSICD);
 			s->state=STATE_CMD_DIN;
 		} else if (dir==SCSI_DEV_DATA_OUT) {
-			val|=O_SCSICD;
-			val&=~(O_SCSIIO);
+			val&=~(O_SCSIIO|O_SCSICD);
 			s->state=STATE_CMD_DOUT;
 		} else {//no data
 			int status=s->dev[s->selected]->handle_status(s->dev[s->selected]);
@@ -359,6 +359,40 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 		val|=O_SCSIIO|O_SCSICD|O_CDPTR;
 		val&=~O_IOPTR;
 		s->state=STATE_STATUS;
+	} else if ((val&O_AUTOXFR) && (s->state==STATE_CMD_DOUT)) {
+		//Plexus has set up the pointers to send out the incoming data.
+		int len=s->bytecount;
+		SCSI_LOG_DEBUG("SCSI: Data to dev: ");
+		for (int i=0; i<len; i++) {
+			s->databuf[i]=emu_read_byte(s->pointer++);
+			SCSI_LOG_DEBUG("%02X ", s->databuf[i]);
+			s->bytecount--;
+		}
+		SCSI_LOG_DEBUG("\n");
+		if (s->dev[s->selected]) {
+			s->dev[s->selected]->handle_data_out(s->dev[s->selected], s->databuf, len);
+		}
+		//next state sets us up for status
+		val|=O_SCSICD|O_SCSIIO|O_CDPTR|O_SRAM;
+
+		int status=1;
+		if (s->dev[s->selected]) {
+			status=s->dev[s->selected]->handle_status(s->dev[s->selected]);
+		}
+		s->buf[2]=0; s->buf[3]=status;
+		SCSI_LOG_DEBUG("SCSI: Device returns status %d\n", status);
+
+		s->state=STATE_CMD_DOUT_FIN;
+		s->op_timeout_us=50;
+	} else if ((val&O_AUTOXFR) && (s->state==STATE_CMD_DOUT_FIN)) {
+		//Next state sets us up for status.
+		//(AUTO, REQ, S_DRAM and CDPTR need to be set here)
+		val|=O_SCSICD|O_SCSIIO|O_CDPTR|O_SRAM;
+//		val&=~O_IOPTR;
+
+		s->state=STATE_STATUS;
+		s->op_timeout_us=50;
+
 	} else if ((val&O_AUTOXFR) && (s->state==STATE_STATUS)) {
 		s->op_timeout_us=50000;
 		//note: Unix needs AUTO, SCSIREQ, SRAM, CDPTR and !RESET here
@@ -368,8 +402,6 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 		//should go to S_M_I
 		s->state=STATE_MSGIN;
 		s->op_timeout_us=2;
-	} else if ((val&O_AUTOXFR) && (s->state==STATE_CMD_DOUT)) {
-		//todo
 	} else if (s->state==STATE_MSGIN) {
 		val&=~(I_ACK|I_IO|I_CD|I_MSG|I_BSY);
 		val|=I_ACK;
@@ -418,15 +450,6 @@ unsigned int scsi_get_scsireg(scsi_t *s) {
 	return ret;
 }
 
-/*
-Note: Proper:
-arbit, select, saveptrs, scrwi, loadptrs, s_s_i_int, s_m_i_int
-arbit, select, scrwi, loadptrs, s_s_i_int, s_m_i_int
-arbit, select, scrwi, loadptrs, s_d_i_int, saveptrs, loadptrs, s_s_i_int, s_m_i_int
-arbit, select, scrwi, loadptrs, s_c_o_int, *crash*
-
-*/
-
 static void handle_interrupts(scsi_t *s) {
 	static int old_int_to_sel=0;
 	int int_to_sel=s->state;
@@ -438,7 +461,7 @@ static void handle_interrupts(scsi_t *s) {
 //	emu_raise_int(INT_VECT_SCSI_RESELECT, (int_to_sel==STATE_RESELECT)?INT_LEVEL_SCSI:0, 0);
 	scsi_pointer_int(IV_INPUT, (int_to_sel==STATE_CMD_DIN));
 	scsi_pointer_int(0, (int_to_sel==STATE_CMD_DOUT));
-	scsi_pointer_int(IV_INPUT|IV_CMD, (int_to_sel==STATE_STATUS) || (int_to_sel==STATE_CMD_DIN_RCV));
+	scsi_pointer_int(IV_INPUT|IV_CMD, (int_to_sel==STATE_STATUS) || (int_to_sel==STATE_CMD_DIN_RCV) || (int_to_sel==STATE_CMD_DOUT_FIN));
 	scsi_pointer_int(IV_INPUT|IV_MSG|IV_CMD, (int_to_sel==STATE_MSGIN));
 	if (int_to_sel!=old_int_to_sel) {
 		if (int_to_sel>=0) SCSI_LOG_DEBUG("SCSI: select int for state %s\n", state_str[int_to_sel]);

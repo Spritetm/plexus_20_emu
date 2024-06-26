@@ -84,6 +84,9 @@ int main(int argc, char **argv) {
 		} else if (strcmp(argv[i], "-l")==0 && i+1<argc) {
 			i++;
 			error|=parse_loglvl_str(argv[i]);
+		} else if (strcmp(argv[i], "-c")==0 && i+1<argc) {
+			i++;
+			cfg.cow_dir=argv[i];
 		} else {
 			printf("Unknown argument %s\n", argv[i]);
 			error=1;
