@@ -6,6 +6,7 @@
 #include "emu.h"
 #include "log.h"
 #include "mapper.h"
+#include "ramrom.h"
 
 // Debug logging
 #define MAPPER_LOG(msg_level, format_and_args...) \
@@ -48,8 +49,7 @@ typedef struct {
 struct mapper_t {
 	//2K entries for usr, 2K for sys
 	desc_t desc[4096];
-	uint8_t *physram;
-	int physram_size;
+	ram_t *physram;
 	int sysmode; //indicates if next accesses are in sysmode or not
 	int cur_id;
 };
@@ -184,60 +184,49 @@ int do_map(mapper_t *m, unsigned int a, unsigned int is_write) {
 
 void mapper_ram_write8(void *obj, unsigned int a, unsigned int val) {
 	mapper_t *m=(mapper_t*)obj;
-	uint8_t *buffer=m->physram;
 	a=do_map(m, a, 1);
 	if (a<0) return;
-	buffer[a]=val;
+	ram_write8(m->physram, a, val);
 }
 
 void mapper_ram_write16(void *obj, unsigned int a, unsigned int val) {
 	mapper_t *m=(mapper_t*)obj;
-	uint8_t *buffer=m->physram;
 	a=do_map(m, a, 1);
 	if (a<0) return;
-	buffer[a]=(val>>8);
-	buffer[a+1]=val;
+	ram_write16(m->physram, a, val);
 }
 
 void mapper_ram_write32(void *obj, unsigned int a, unsigned int val) {
 	mapper_t *m=(mapper_t*)obj;
-	uint8_t *buffer=m->physram;
 	a=do_map(m, a, 1);
 	if (a<0) return;
-	buffer[a]=(val>>24);
-	buffer[a+1]=(val>>16);
-	buffer[a+2]=(val>>8);
-	buffer[a+3]=val;
+	ram_write32(m->physram, a, val);
 }
 
 unsigned int mapper_ram_read8(void *obj, unsigned int a) {
 	mapper_t *m=(mapper_t*)obj;
-	uint8_t *buffer=m->physram;
 	a=do_map(m, a, 0);
 	if (a<0) return 0;
-	return buffer[a];
+	return ram_read8(m->physram, a);
 }
 
 unsigned int mapper_ram_read16(void *obj, unsigned int a) {
 	mapper_t *m=(mapper_t*)obj;
-	uint8_t *buffer=m->physram;
 	a=do_map(m, a, 0);
 	if (a<0) return 0;
-	return buffer[a+1]+(buffer[a]<<8);
+	return ram_read16(m->physram, a);
 }
 
 unsigned int mapper_ram_read32(void *obj, unsigned int a) {
 	mapper_t *m=(mapper_t*)obj;
-	uint8_t *buffer=m->physram;
 	a=do_map(m, a, 0);
 	if (a<0) return 0;
-	return buffer[a+3]+(buffer[a+2]<<8)+(buffer[a+1]<<16)+(buffer[a]<<24);
+	return ram_read32(m->physram, a);
 }
 
-mapper_t *mapper_new(void *physram, int size) {
+mapper_t *mapper_new(ram_t *physram, int size) {
 	mapper_t *ret=calloc(sizeof(mapper_t), 1);
-	ret->physram=(uint8_t*)physram;
-	ret->physram_size=size;
+	ret->physram=physram;
 	return ret;
 }
 

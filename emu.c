@@ -143,10 +143,12 @@ unsigned int nop_read(void *obj, unsigned int a) {
 void nop_write(void *obj, unsigned int a, unsigned int val) {
 }
 
-void setup_ram(const char *name) {
+//Note: if size_bytes is negative, the size of the full region is used.
+void setup_ram(const char *name, int size_bytes) {
 	mem_range_t *m=find_range_by_name(name);
 	assert(m);
-	m->obj=ram_new(m->size);
+	if (size_bytes<0) size_bytes=m->size;
+	m->obj=ram_new(size_bytes);
 	m->read8=ram_read8;
 	m->read16=ram_read16;
 	m->read32=ram_read32;
@@ -189,7 +191,6 @@ static int check_can_access(mem_range_t *m, unsigned int address) {
 #define PRINT_MEMREAD 0
 
 static unsigned int read_memory_32(unsigned int address) {
-	if (address==0) EMU_LOG_DEBUG("read addr 0\n");
 	mem_range_t *m=find_range_by_addr(address);
 	//HACK! If this is enabled, diags get more verbose
 #if 0
@@ -654,7 +655,10 @@ int m68k_int_cb(int level) {
 		vectors[cur_cpu][r]=0;
 	}
 	raise_highest_int();
-	EMU_LOG_DEBUG("Int ack level %x cpu %x vect %x\n", level, cur_cpu, r);
+	//we ignore the clock ints when printing debug messages
+	if (r!=INT_VECT_CLOCK) {
+		EMU_LOG_DEBUG("Int ack level %x cpu %x vect %x\n", level, cur_cpu, r);
+	}
 	return r;
 }
 
@@ -662,7 +666,10 @@ int need_raise_highest_int[2]={0};
 
 void emu_raise_int(uint8_t vector, uint8_t level, int cpu) {
 	if (vectors[cpu][vector]!=level) {
-		EMU_LOG_DEBUG("Interrupt %s: %x\n", level?"raised":"cleared", vector);
+		//we ignore the clock ints when printing debug messages
+		if (vector!=INT_VECT_CLOCK) {
+			EMU_LOG_DEBUG("Interrupt %s: %x\n", level?"raised":"cleared", vector);
+		}
 		vectors[cpu][vector]=level;
 		need_raise_highest_int[cpu]=1;
 		m68k_end_timeslice();
@@ -754,8 +761,8 @@ void emu_start(emu_cfg_t *cfg) {
 	tracefile=fopen("trace.txt","w");
 //Note: this is a bitmask for which CPU gets logged. (1<<0) for dma, (1<<1) for job cpu.
 //	do_tracefile=(1<<1);
-	setup_ram("RAM");
-	setup_ram("SRAM");
+	setup_ram("RAM", cfg->mem_size_bytes);
+	setup_ram("SRAM", -1);
 	setup_rtcram("RTC_RAM", cfg->rtcram);
 	setup_rom("U15", cfg->u15_rom); //used to be U17
 	setup_rom("U17", cfg->u17_rom); //used to be U19

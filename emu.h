@@ -30,6 +30,7 @@ typedef struct {
 	const char *rtcram;
 	int realtime;
 	const char *cow_dir;
+	int mem_size_bytes;
 } emu_cfg_t;
 
 void emu_start(emu_cfg_t *cfg);

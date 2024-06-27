@@ -73,6 +73,7 @@ int main(int argc, char **argv) {
 		.rtcram="rtcram.bin",
 #endif
 		.hd0img="plexus-sanitized.img",
+		.mem_size_bytes=2*1024*1024
 	};
 #ifdef __EMSCRIPTEN__
 	emscripten_init();
@@ -93,11 +94,20 @@ int main(int argc, char **argv) {
 		} else if (strcmp(argv[i], "-c")==0 && i+1<argc) {
 			i++;
 			cfg.cow_dir=argv[i];
+		} else if (strcmp(argv[i], "-m")==0 && i+1<argc) {
+			i++;
+			cfg.mem_size_bytes=atoi(argv[i])*1024*1024;
 		} else {
 			printf("Unknown argument %s\n", argv[i]);
 			error=1;
 			break;
 		}
+	}
+	int m=cfg.mem_size_bytes/(1024*1024);
+	if ((m & (m-1)) || m<1 || m>8) {
+		printf("Memory needs to be 1, 2, 4 or 8MiB (%d given)\n");
+		printf("Note 1 and 8 MB may not be supported by the OS\n");
+		error=1;
 	}
 	if (error) {
 		printf("Plexus-20 emulator\n");
@@ -105,6 +115,7 @@ int main(int argc, char **argv) {
 		printf(" -u15 Path to U15 rom file\n");
 		printf(" -u17 Path to U17 rom file\n");
 		printf(" -r Try to run at realtime speeds\n");
+		printf(" -m n Set the amount of memory to n megabytes\n");
 		printf(" -l module=level - set logging level of module to specified level\n");
 		printf(" -l level - Set overal log level to specified level\n");
 		printf("Modules: ");

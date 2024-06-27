@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <time.h>
+#include <string.h>
 #include "emu.h"
 #include "log.h"
 #include "rtcram.h"
@@ -83,7 +84,7 @@ unsigned int rtcram_read32(void *obj, unsigned int a) {
 
 rtcram_t *rtcram_new(const char *filename) {
 	rtcram_t *r=calloc(sizeof(rtcram_t), 1);
-	r->filename=filename;
+	r->filename=strdup(filename);
 
 	FILE *rtcramfile = NULL;
 	size_t rtcread   = 0;
