@@ -437,12 +437,11 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 	}
 
 	//Diagnostics fix, the "set" outbit bits echo back to the input register
-	if (orival == O_SCSIACK || orival == O_SCSICD || orival == O_SCSIMSG || orival == O_SCSIIO || orival == O_SCSIREQ)
-	{
+	if (orival == O_SCSIACK || orival == O_SCSICD ||
+			orival == O_SCSIMSG || orival == O_SCSIIO ||
+			orival == O_SCSIREQ) {
 		val = orival;
-		printf("!\n");
 	}
-
 	
 	if (oldstate!=s->state) SCSI_LOG_DEBUG("Changed SCSI status %s->%s\n", state_str[oldstate], state_str[s->state]);
 
