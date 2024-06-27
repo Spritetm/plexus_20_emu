@@ -100,6 +100,10 @@
 #define ERR_EN_BLK2			0x0002 //duplicate with 0x200?
 #define ERR_EN_MBUS			0x0001
 
+//note other defines are in scsi.c
+#define I_NSCPERR	0x2000
+#define I_NSCBERR	0x1000
+
 
 struct csr_t {
 	uint16_t reg[0x10];
@@ -257,17 +261,21 @@ unsigned int csr_read8(void *obj, unsigned int a) {
 	}
 }
 
+//Note: Most of these have been checked against the schematic.
 void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 	csr_t *c=(csr_t*)obj;
 	//note: a has the start of MMIO as base, but RESET_* has the base of CSR,
 	//so we adjust the address here.
 	a=a+0x20;
 	if (a==RESET_MULTERR) {
+		//Note: this doesn't really seem to do anything except allow
+		//the multibus error address register to accept a new address.
 		CSR_LOG_DEBUG("CSR: Reset mbus error\n");
-		c->reg[CSR_O_MISC/2]&=~MISC_TBUSY;
+//		c->reg[CSR_O_MISC/2]&=~MISC_TBUSY;
 		emu_raise_int(INT_VECT_MB_IF_ERR, 0, 0);
 		emu_raise_int(INT_VECT_MB_IF_ERR, 0, 1);
 	} else if (a==RESET_SCSI_PFLG) {
+		c->reg[CSR_O_SC_R/2] |= I_NSCPERR;
 		emu_raise_int(INT_VECT_SCSI_PARITY, 0, 0);
 	} else if (a==RESET_CLR_JOBINT) {
 		CSR_LOG_DEBUG("CSR: Clear job int\n");
@@ -291,18 +299,20 @@ void csr_write16_mmio(void *obj, unsigned int a, unsigned int val) {
 		emu_raise_int(INT_VECT_CLOCK, 0, 0);
 	} else if (a==RESET_JBERR) {
 		CSR_LOG_DEBUG("CSR: Reset job bus error\n");
-		c->reg[CSR_I_ERR/2]&=~(ERR_UBE_JOB|ERR_ABE_JOB);
+		c->reg[CSR_I_ERR/2]&=~(ERR_UBE_JOB|ERR_ABE_JOB|ERR_MBTO|ERR_DERR_JOB|ERR_AERR_JOB);
 	} else if (a==RESET_DBERR) {
 		CSR_LOG_DEBUG("CSR: Reset dma bus error\n");
-		c->reg[CSR_I_ERR/2]&=~(ERR_UBE_DMA|ERR_ABE_DMA);
+		c->reg[CSR_I_ERR/2]&=~(ERR_UBE_DMA|ERR_ABE_DMA|ERR_AS26|ERR_SOOPS);
 	} else if (a==RESET_MPERR) {
 		CSR_LOG_DEBUG("CSR: Reset parity error\n");
 		emu_raise_int(INT_VECT_PARITY_ERR, 0, 0);
 		emu_raise_int(INT_VECT_PARITY_ERR, 0, 1);
 //		c->reg[CSR_I_PERR1/2]&=~((1<<13)|(1<<12));
 	} else if (a==RESET_SWINT) {
+		//SWitch INTerrupt
 		//not implemented yet
 	} else if (a==RESET_SCSIBERR) {
+		c->reg[CSR_O_SC_R/2] |= I_NSCBERR;
 		for (int i=0; i<16; i++) {
 			if (i!=4) emu_raise_int(INT_VECT_SCSI_SPURIOUS+i, 0, 0);
 		}
