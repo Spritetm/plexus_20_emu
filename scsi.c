@@ -181,6 +181,8 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 		}
 		SCSI_LOG_DEBUG("\n");
 	}
+	unsigned int orival = val;
+	
 	int oldstate=s->state;
 	if (val&O_SCSIRST) {
 		//Note: SCSI RESET makes all other signals on the bus undefined and
@@ -242,6 +244,9 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 					if (s->diag & SCSI_DIAG_PARITY) {
 						emu_raise_int(INT_VECT_SCSI_PARITY, INT_LEVEL_SCSI, 0);
 					}
+					
+					
+					
 				} else {
 					s->buf[3]=emu_read_byte(s->pointer+s->ptr_read_msb);
 					SCSI_LOG_DEBUG("Read %x from main memory adr %x\n", s->buf[3], s->pointer);
@@ -267,9 +272,18 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 			if (s->bytecount>0) s->bytecount--;
 			SCSI_LOG_DEBUG("After read/write: Bytecnt %x ptr %x\n", s->bytecount, s->pointer);
 		} else {
+			//Selftest: interrupt 0x6B clears everything except O_AUTOXFR, O_SCSIRST and O_SCSIBSY
+			// but immediately afterwards expects O_MSGPTR to be set if it was just before clearing it
+			if ((orival & O_SCSIBSY) && (s->reg & O_MSGPTR))
+				val |= O_MSGPTR;
+					
 			val&=~I_ACK;
 		}
 
+		if (oldstate!=s->state) SCSI_LOG_DEBUG("Changed SCSI status %s->%s\n", state_str[oldstate], state_str[s->state]);
+
+		s->reg=val;
+		return;
 /*
 	Note for non-diag scsi: State is the old state, we set things up to go into the new state.
 	If required, the interrupt we set up will poke the CPU after a timeout.
@@ -421,6 +435,15 @@ void scsi_set_scsireg(scsi_t *s, unsigned int val) {
 		val&=~(I_REQ);
 		val&=~I_BSY;
 	}
+
+	//Diagnostics fix, the "set" outbit bits echo back to the input register
+	if (orival == O_SCSIACK || orival == O_SCSICD || orival == O_SCSIMSG || orival == O_SCSIIO || orival == O_SCSIREQ)
+	{
+		val = orival;
+		printf("!\n");
+	}
+
+	
 	if (oldstate!=s->state) SCSI_LOG_DEBUG("Changed SCSI status %s->%s\n", state_str[oldstate], state_str[s->state]);
 
 	s->reg=val;
@@ -458,7 +481,7 @@ static void handle_interrupts(scsi_t *s) {
 		emu_schedule_int_us(s->op_timeout_us);
 	}
 	emu_raise_int(INT_VECT_SCSI_SELECTI, (int_to_sel==STATE_SELECT || int_to_sel==STATE_SELECT_NODEV)?INT_LEVEL_SCSI:0, 0);
-//	emu_raise_int(INT_VECT_SCSI_RESELECT, (int_to_sel==STATE_RESELECT)?INT_LEVEL_SCSI:0, 0);
+	emu_raise_int(INT_VECT_SCSI_RESELECT, (int_to_sel==STATE_RESELECT)?INT_LEVEL_SCSI:0, 0);
 	scsi_pointer_int(IV_INPUT, (int_to_sel==STATE_CMD_DIN));
 	scsi_pointer_int(0, (int_to_sel==STATE_CMD_DOUT));
 	scsi_pointer_int(IV_INPUT|IV_CMD, (int_to_sel==STATE_STATUS) || (int_to_sel==STATE_CMD_DIN_RCV) || (int_to_sel==STATE_CMD_DOUT_FIN));
