@@ -190,6 +190,7 @@ void mapper_ram_write8(void *obj, unsigned int a, unsigned int val) {
 }
 
 void mapper_ram_write16(void *obj, unsigned int a, unsigned int val) {
+	assert((a&1)==0);
 	mapper_t *m=(mapper_t*)obj;
 	a=do_map(m, a, 1);
 	if (a<0) return;
@@ -197,10 +198,8 @@ void mapper_ram_write16(void *obj, unsigned int a, unsigned int val) {
 }
 
 void mapper_ram_write32(void *obj, unsigned int a, unsigned int val) {
-	mapper_t *m=(mapper_t*)obj;
-	a=do_map(m, a, 1);
-	if (a<0) return;
-	ram_write32(m->physram, a, val);
+	mapper_ram_write16(obj, a,   val>>16);    //hi
+	mapper_ram_write16(obj, a+2, val&0xFFFF); //lo
 }
 
 unsigned int mapper_ram_read8(void *obj, unsigned int a) {
@@ -211,6 +210,7 @@ unsigned int mapper_ram_read8(void *obj, unsigned int a) {
 }
 
 unsigned int mapper_ram_read16(void *obj, unsigned int a) {
+	assert((a&1)==0);
 	mapper_t *m=(mapper_t*)obj;
 	a=do_map(m, a, 0);
 	if (a<0) return 0;
@@ -218,10 +218,11 @@ unsigned int mapper_ram_read16(void *obj, unsigned int a) {
 }
 
 unsigned int mapper_ram_read32(void *obj, unsigned int a) {
-	mapper_t *m=(mapper_t*)obj;
-	a=do_map(m, a, 0);
-	if (a<0) return 0;
-	return ram_read32(m->physram, a);
+	unsigned int hi = mapper_ram_read16(obj,a);
+	if (hi<0) return 0;
+	unsigned int lo = mapper_ram_read16(obj,a+2);
+	if (lo<0) return 0;
+	return (hi<<16)|lo;
 }
 
 mapper_t *mapper_new(ram_t *physram, int size) {
