@@ -201,6 +201,10 @@
 #define M68K_USE_64_BIT  OPT_ON
 
 
+#define m68k_read_disassembler_16(A) m68k_read_memory_16(A)
+#define m68k_read_disassembler_32(A) m68k_read_memory_32(A)
+
+
 #endif /* M68K_COMPILE_FOR_MAME */
 
 /* ======================================================================== */

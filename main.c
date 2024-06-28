@@ -105,7 +105,7 @@ int main(int argc, char **argv) {
 	}
 	int m=cfg.mem_size_bytes/(1024*1024);
 	if ((m & (m-1)) || m<1 || m>8) {
-		printf("Memory needs to be 1, 2, 4 or 8MiB (%d given)\n");
+		printf("Memory needs to be 1, 2, 4 or 8MiB (%d given)\n", m);
 		printf("Note 1 and 8 MB may not be supported by the OS\n");
 		error=1;
 	}

@@ -2,6 +2,7 @@
 #include "mapper.h" //for access flags
 
 void dump_cpu_state();
+void dump_cpu_state_all();
 void dump_callstack();
 
 void emu_raise_int(uint8_t vector, uint8_t level, int cpu);

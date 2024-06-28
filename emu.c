@@ -103,6 +103,38 @@ void dump_cpu_state() {
 	EMU_LOG_INFO("id %d CPU %d PC %08X SP %08X SR %08X D0 %08X\n", insn_id, cur_cpu, pc, sp, sr, d0);
 }
 
+void dump_cpu_state_all() {
+	int regs[]={
+		M68K_REG_PC, M68K_REG_SR, M68K_REG_SP, M68K_REG_USP, 
+		M68K_REG_D0, M68K_REG_D1, M68K_REG_D2, M68K_REG_D3, 
+		M68K_REG_D4, M68K_REG_D5, M68K_REG_D6, M68K_REG_D7, 
+		M68K_REG_A0, M68K_REG_A1, M68K_REG_A2, M68K_REG_A3, 
+		M68K_REG_A4, M68K_REG_A5, M68K_REG_A6, M68K_REG_A7, 
+	};
+	char *regnames[]={
+		"PC", "SR", "SP", "USP", 
+		"D0", "D1", "D2", "D3",
+		"D4", "D5", "D6", "D7",
+		"A0", "A1", "A2", "A3",
+		"A4", "A5", "A6", "A7"
+	};
+	EMU_LOG_INFO("CPU %d STATE DUMP:\n", cur_cpu);
+	for (int i=0; i<sizeof(regs)/sizeof(regs[0]); i++) {
+		EMU_LOG_INFO("%s\t%08X%s", regnames[i], m68k_get_reg(NULL, regs[i]), ((i&3)==3)?"\n":"\t");
+	}
+	int pc=m68k_get_reg(NULL, M68K_REG_PC);
+	int pos=pc-18;
+	char buf[1024];
+	//try to align to full insn
+	pos+=m68k_disassemble(buf, pos, M68K_CPU_TYPE_68010);
+	while (pos<pc+16) {
+		pos+=m68k_disassemble(buf, pos, M68K_CPU_TYPE_68010);
+		EMU_LOG_INFO("%06X %s%s\n", pos, buf, pos==pc?"\t\t<-- PC":"");
+	}
+	EMU_LOG_INFO("END DUMP\n");
+}
+
+
 void dump_callstack() {
 	EMU_LOG_INFO("Callstack (CPU %d): ", cur_cpu);
 	for (int i=callstack_ptr[cur_cpu]-1; i>=0; --i) {
@@ -210,6 +242,7 @@ static unsigned int read_memory_32(unsigned int address) {
 #if PRINT_MEMREAD
 	EMU_LOG_INFO("read32 %s %x -> %x\n", m->name, address, m->read32(m->obj, address - m->offset));
 #endif
+
 	if (!check_can_access(m, address)) return 0;
 	return m->read32(m->obj, address - m->offset);
 }
@@ -701,6 +734,10 @@ void m68k_trace_cb(unsigned int pc) {
 	if (0 && pc==0x33d6) {
 		EMU_LOG_INFO("write\n");
 		dump_callstack();
+	}
+	if (0 && (pc==0x1FB74 || pc==0x1FB76 || pc==0x1FB78)) {
+		EMU_LOG_INFO("Ad 0 %x\n", read_memory_32(0));
+		dump_cpu_state_all();
 	}
 
 	//note: pc already is advanced to the next insn when this is called
