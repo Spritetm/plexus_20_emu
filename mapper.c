@@ -144,7 +144,7 @@ void mapper_write8(void *obj, unsigned int a, unsigned int val) {
 	if (a&1) {
 		v=(v&0xFF00)|(val&0xff);
 	} else {
-		v=(v&0xFF)|((val<<8)&0xff000);
+		v=(v&0xFF)|((val<<8)&0xff00);
 	}
 	mapper_write16(obj, a&~1, v);
 }
