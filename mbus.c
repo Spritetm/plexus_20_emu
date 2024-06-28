@@ -63,7 +63,7 @@ unsigned int mbus_read8(void *obj, unsigned int a) {
 	MBUS_LOG_DEBUG("MBUS: rb %x->%x\n", a, a+0x780000);
 	if (!emu_get_mb_diag()) return 0;
 	//Mbus in diag modes errors with a MBTO.
-	emu_mbus_error(a|EMU_MBUS_BUSERROR);
+	emu_mbus_error(a|EMU_MBUS_ERROR_READ|EMU_MBUS_BUSERROR);
 	return 0;
 }
 
@@ -71,7 +71,7 @@ unsigned int mbus_read16(void *obj, unsigned int a) {
 	MBUS_LOG_DEBUG("MBUS: rw %x->%x\n", a, a+0x780000);
 	if (!emu_get_mb_diag()) return 0;
 	//Mbus in diag modes errors with a MBTO.
-	emu_mbus_error(a|EMU_MBUS_BUSERROR);
+	emu_mbus_error(a|EMU_MBUS_ERROR_READ|EMU_MBUS_BUSERROR);
 	return 0;
 }
 

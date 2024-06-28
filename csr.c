@@ -146,7 +146,8 @@ void csr_set_access_error(csr_t *csr, int cpu, int type, int addr, int is_write)
 	if (type&ACCESS_ERROR_MBTO) {
 		v|=ERR_MBTO;
 		if (emu_get_mb_diag()) {
-			emu_raise_int(INT_VECT_MB_IF_ERR, INT_LEVEL_MB_IF_ERR, 1);
+			if (is_write)
+				emu_raise_int(INT_VECT_MB_IF_ERR, INT_LEVEL_MB_IF_ERR, 1);
 			csr->reg[CSR_I_MBERR/2]=(addr>>11)&0xfe;
 			if (!is_write) csr->reg[CSR_I_MBERR/2]|=0x1;
 		}
