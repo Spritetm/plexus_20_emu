@@ -599,6 +599,12 @@ static void default_instr_hook_callback(unsigned int pc)
 	(void)pc;
 }
 
+/* Called when a trap instruction is executed */
+static void default_trap_instr_callback(unsigned int vector)
+{
+    (void)vector;
+}
+
 
 #if M68K_EMULATE_ADDRESS_ERROR
 	#include <setjmp.h>
@@ -774,6 +780,11 @@ void m68k_set_fc_callback(void  (*callback)(unsigned int new_fc))
 void m68k_set_instr_hook_callback(void  (*callback)(unsigned int pc))
 {
 	CALLBACK_INSTR_HOOK = callback ? callback : default_instr_hook_callback;
+}
+
+void m68k_set_trap_instr_callback(void  (*callback)(unsigned int vector))
+{
+	CALLBACK_TRAP_INSTR = callback ? callback : default_trap_instr_callback;
 }
 
 /* Set the CPU type. */
@@ -1097,6 +1108,7 @@ void m68k_init(void)
 	m68k_set_pc_changed_callback(NULL);
 	m68k_set_fc_callback(NULL);
 	m68k_set_instr_hook_callback(NULL);
+	m68k_set_trap_instr_callback(NULL);
 }
 
 /* Trigger a Bus Error exception */

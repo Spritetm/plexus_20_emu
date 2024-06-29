@@ -55,7 +55,7 @@ struct mapper_t {
 };
 
 void mapper_set_mapid(mapper_t *m, uint8_t id) {
-	if (m->cur_id!=id) MAPPER_LOG_DEBUG("Switching to map id %d\n", id);
+	if (m->cur_id!=id) MAPPER_LOG_INFO("Switching to map id %d\n", id);
 	m->cur_id=id;
 }
 

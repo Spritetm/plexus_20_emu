@@ -396,6 +396,7 @@ typedef uint32 uint64;
 #define CALLBACK_PC_CHANGED  m68ki_cpu.pc_changed_callback
 #define CALLBACK_SET_FC      m68ki_cpu.set_fc_callback
 #define CALLBACK_INSTR_HOOK  m68ki_cpu.instr_hook_callback
+#define CALLBACK_TRAP_INSTR m68ki_cpu.trap_instr_callback
 
 
 
@@ -579,6 +580,7 @@ typedef uint32 uint64;
 	#define m68ki_get_address_space() FUNCTION_CODE_USER_DATA
 #endif /* M68K_EMULATE_FC */
 
+#define m68ki_trap_instr(V) CALLBACK_TRAP_INSTR(V)
 
 /* Enable or disable trace emulation */
 #if M68K_EMULATE_TRACE
@@ -1000,6 +1002,7 @@ typedef struct
 	void (*pc_changed_callback)(unsigned int new_pc); /* Called when the PC changes by a large amount */
 	void (*set_fc_callback)(unsigned int new_fc);     /* Called when the CPU function code changes */
 	void (*instr_hook_callback)(unsigned int pc);     /* Called every instruction cycle prior to execution */
+	void (*trap_instr_callback)(unsigned int vector); /* Called when a trap instruction is executed */
 
 	//bus error special register support, backported from Mame
 	uint16 mmu_tmp_fc;      /* temporary hack: function code for the mmu (moves) */
@@ -1901,6 +1904,7 @@ static inline void m68ki_exception_trap(uint vector)
 /* Trap#n stacks a 0 frame but behaves like group2 otherwise */
 static inline void m68ki_exception_trapN(uint vector)
 {
+        m68ki_trap_instr(vector);
 	uint sr = m68ki_init_exception();
 	m68ki_stack_frame_0000(REG_PC, sr, vector);
 	m68ki_jump_vector(vector);

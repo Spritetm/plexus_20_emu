@@ -14,7 +14,8 @@ const char *log_str[]={
 	[LOG_SRC_SCSI]="scsi",
 	[LOG_SRC_RAMROM]="ramrom",
 	[LOG_SRC_RTC]="rtc",
-	[LOG_SRC_EMU]="emu"
+	[LOG_SRC_EMU]="emu",
+	[LOG_SRC_STRACE]="strace",
 };
 
 const char *level_str[]={

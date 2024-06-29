@@ -293,6 +293,11 @@ void m68k_set_fc_callback(void  (*callback)(unsigned int new_fc));
  */
 void m68k_set_instr_hook_callback(void  (*callback)(unsigned int pc));
 
+/* Set a callback for trap instructions.
+ * The CPU calls this callback every time it encounters an trap instruction
+ * Default behavior: do nothing.
+ */
+void m68k_set_trap_instr_callback(void  (*callback)(unsigned int vector));
 
 
 /* ======================================================================== */
