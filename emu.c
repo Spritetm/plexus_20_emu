@@ -47,7 +47,8 @@ unsigned int fc_bits=0;
 mapper_t *mapper;
 csr_t *csr;
 
-int32_t callstack[2][8192];
+#define CALLSTACK_SZ 1024
+int32_t callstack[2][CALLSTACK_SZ];
 int callstack_ptr[2]={0};
 
 #define FLAG_USR_OK 1
@@ -716,6 +717,21 @@ void emu_raise_rtc_int() {
 	if (csr_get_rtc_int_ena(c, 1)) emu_raise_int(INT_VECT_CLOCK, INT_LEVEL_CLOCK, 1);
 }
 
+//It's easy for the callstack handler to get confused. Make sure there's never
+//too few or too many items on here.
+void handle_callstack_ovf_udf(int cpu) {
+	if (callstack_ptr[cpu]<0) callstack_ptr[cpu]=0;
+	if (callstack_ptr[cpu]>=CALLSTACK_SZ) {
+		//We overflowed. Assume the first half of the callstack is
+		//crud, move the second half there and we have half a callstack
+		//free again.
+		for (int i=0; i<CALLSTACK_SZ/2; i++) {
+			callstack[cpu][i]=callstack[cpu][i+CALLSTACK_SZ/2];
+		}
+		callstack_ptr[cpu]=CALLSTACK_SZ/2;
+	}
+}
+
 int old_val;
 
 void m68k_trace_cb(unsigned int pc) {
@@ -747,6 +763,7 @@ void m68k_trace_cb(unsigned int pc) {
 	//decode jsr/trs instructions for callstack tracing
 	if ((ir&0xFFC0)==0x4e80) callstack[cur_cpu][callstack_ptr[cur_cpu]++]=prev_pc;
 	if (ir==0x4E75) callstack_ptr[cur_cpu]--;
+	handle_callstack_ovf_udf(cur_cpu);
 	prev_pc=pc;
 	unsigned int sr=m68k_get_reg(NULL, M68K_REG_SR);
 	if (do_tracefile&(1<<cur_cpu)) fprintf(tracefile, "%d %d %06x %x\n", insn_id, cur_cpu, pc, sr);

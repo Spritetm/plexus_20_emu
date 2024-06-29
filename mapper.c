@@ -111,6 +111,7 @@ int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags) {
 
 
 void mapper_write16(void *obj, unsigned int a, unsigned int val) {
+	assert((a&1)==0);
 	if (emu_get_cur_cpu()==0) return; //seems writes from dma cpu are not allowed
 
 	mapper_t *m=(mapper_t*)obj;
