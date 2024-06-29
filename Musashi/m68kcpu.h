@@ -1996,6 +1996,7 @@ static inline void m68ki_exception_bus_error(void)
 	m68ki_jump_vector(EXCEPTION_BUS_ERROR);
 
 	CPU_RUN_MODE = RUN_MODE_BERR_AERR_RESET;
+	
 
 	longjmp(m68ki_bus_error_jmp_buf, 1);
 }
