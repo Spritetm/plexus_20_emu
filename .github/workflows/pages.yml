@@ -1,5 +1,5 @@
 
-name: CI
+name: deploy-github-pages
 
 permissions:
   id-token: write
@@ -52,6 +52,8 @@ jobs:
           path: 'web'
 
   deploy:
+    # Only run if we can deploy to https://spritetm.github.io/plexus_20_emu/
+    if: ${{ github.repository == 'Spritetm/plexus_20_emu' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
