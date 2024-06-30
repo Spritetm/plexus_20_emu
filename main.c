@@ -105,6 +105,9 @@ int main(int argc, char **argv) {
 		} else if (strcmp(argv[i], "-u17")==0 && i+1<argc) {
 			i++;
 			cfg.u15_rom=argv[i];
+		} else if (strcmp(argv[i], "-hd")==0 && i+1<argc) {
+			i++;
+			cfg.hd0img=argv[i];
 		} else if (strcmp(argv[i], "-r")==0) {
 			cfg.realtime=1;
 		} else if (strcmp(argv[i], "-y")==0) {
@@ -135,6 +138,7 @@ int main(int argc, char **argv) {
 		printf("Usage: %s [args]\n", argv[0]);
 		printf(" -u15 Path to U15 rom file\n");
 		printf(" -u17 Path to U17 rom file\n");
+		printf(" -hd Path to hdimage file\n");
 		printf(" -r Try to run at realtime speed\n");
 		printf(" -m n Set the amount of memory to n megabytes\n");
 		printf(" -l module=level - set logging level of module to specified level\n");
