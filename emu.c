@@ -749,16 +749,14 @@ uint8_t stget8(void *ctx, uint32_t addr)
 	return read_memory_8(addr);
 }
 
+//note: only invoked if cfg->tracesyscalls is true
 void m68k_trap_cb(unsigned int vector) {
-	if (!log_level_active(LOG_SRC_STRACE, LOG_DEBUG)) {
-		return;
-	}
 	if (cur_cpu != 1 || vector != 32) {
 		return;
 	}
 	unsigned int d0 = m68k_get_reg(NULL, M68K_REG_D0);
 	unsigned int sp = m68k_get_reg(NULL, M68K_REG_A7);
-	log_printf(LOG_SRC_STRACE, LOG_DEBUG, "strace: %s\n", m68k_strace(NULL, d0, sp));
+	log_printf(LOG_SRC_STRACE, LOG_INFO, "strace: %s\n", m68k_strace(NULL, d0, sp));
 }
 
 //has a level if triggered, otherwise 0
@@ -951,7 +949,7 @@ void emu_start(emu_cfg_t *cfg) {
 		m68k_set_int_ack_callback(m68k_int_cb);
 		m68k_set_instr_hook_callback(m68k_trace_cb);
 		m68k_set_fc_callback(m68k_fc_cb);
-		m68k_set_trap_instr_callback(m68k_trap_cb);
+		if (cfg->tracesyscalls) m68k_set_trap_instr_callback(m68k_trap_cb);
 		m68k_pulse_reset();
 		m68k_set_irq(0);
 		m68k_get_context(cpuctx[i]);

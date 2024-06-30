@@ -112,6 +112,8 @@ int main(int argc, char **argv) {
 			cfg.realtime=1;
 		} else if (strcmp(argv[i], "-y")==0) {
 			cfg.noyolo=1;
+		} else if (strcmp(argv[i], "-t")==0) {
+			cfg.tracesyscalls=1;
 		} else if (strcmp(argv[i], "-l")==0 && i+1<argc) {
 			i++;
 			error=parse_loglvl_str(argv[i]);
@@ -144,6 +146,7 @@ int main(int argc, char **argv) {
 		printf(" -l module=level - set logging level of module to specified level\n");
 		printf(" -l level - Set overal log level to specified level\n");
 		printf(" -y Disable 'yolo-hack' making the first 8 bytes of ram writable in sys mode\n");
+		printf(" -t Use traps to trace SysV syscalls\n");
 		printf("Modules: ");
 		for (int i=0; i<LOG_SRC_MAX; i++) printf("%s ", log_str[i]);
 		printf("\n");

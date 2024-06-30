@@ -50,6 +50,7 @@ typedef struct {
 	const char *cow_dir;	//Directory path for COW files, or "" or NULL for no COW
 	int mem_size_bytes;		//Main RAM memory size
 	int noyolo;				//True to disable YOLO hack
+	int tracesyscalls;		//True if syscall traps need to be printed out
 } emu_cfg_t;
 
 //Start emu with given parameters
