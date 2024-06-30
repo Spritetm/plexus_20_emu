@@ -167,7 +167,7 @@ M68KMAKE_TABLE_FOOTER
 void m68ki_build_opcode_table(void)
 {
 	const opcode_handler_struct *ostruct;
-	int cycle_cost;
+	//int cycle_cost;
 	int instr;
 	int i;
 	int j;

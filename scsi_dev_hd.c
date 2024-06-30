@@ -22,6 +22,15 @@
 #include "log.h"
 #include "emscripten_env.h"
 
+/*
+This can take a directory for copy-on-write storage. The idea is that there
+is a file that is a hard disk image that is never written to. Instead, as soon
+as a sector is written, a file is created in the COW directory with the LBA
+of the sector in the name; data is written there. On a read, the code first 
+checks if such a file exists and if so it returns the data from there.
+If it does not, it falls back to returning data from the base image.
+*/
+
 //Might need to change if e.g. the backing file changes for the web version.
 #define COW_VERSION_MAJOR 0
 #define COW_VERSION_MINOR 0
@@ -46,6 +55,7 @@ static const uint8_t sense[]={
 	0,0,0,0	//sense key specific
 };
 
+//Open the COW file for a given LBA. Open it with the mode indicated.
 static FILE *open_cow_file(scsi_hd_t *hd, int lba, const char *mode) {
 	char buf[1024];
 	snprintf(buf, sizeof(buf), "%s/cow-data-%06d.bin", hd->cow_dir, lba);
@@ -53,6 +63,7 @@ static FILE *open_cow_file(scsi_hd_t *hd, int lba, const char *mode) {
 	return f;
 }
 
+//Write a block, either to the COW directory or to the image.
 static void write_block(scsi_hd_t *hd, int lba, uint8_t *data) {
 	if (hd->cow_dir) {
 		FILE *f=open_cow_file(hd, lba, "w+b");
@@ -70,12 +81,14 @@ static void write_block(scsi_hd_t *hd, int lba, uint8_t *data) {
 	}
 }
 
+//Read a block, either from the COW directory or from the image.
 static void read_block(scsi_hd_t *hd, int lba, uint8_t *data) {
 	if (hd->cow_dir) {
 		FILE *f=open_cow_file(hd, lba, "rb");
 		if (f) {
 			uint8_t ver[2];
 			fread(ver, 2, 1, f);
+			//Check version; we only want to use files with matching version no.
 			if (ver[0]==COW_VERSION_MAJOR && ver[1]==COW_VERSION_MINOR) {
 				fread(data, 512, 1, f);
 				fclose(f);
@@ -86,6 +99,7 @@ static void read_block(scsi_hd_t *hd, int lba, uint8_t *data) {
 			}
 		}
 	}
+	//No cow file for the data; return from base image.
 	fseek(hd->hdfile, lba*512, SEEK_SET);
 	fread(data, 512, 1, hd->hdfile);
 }
@@ -107,7 +121,7 @@ static int hd_handle_cmd(scsi_dev_t *dev, uint8_t *cd, int len) {
 	} else if (cd[0]==0xa) { //write
 		return SCSI_DEV_DATA_OUT;
 	} else if (cd[0]==0xC2) {
-		//omti config cmd?
+		//omti config cmd
 		return SCSI_DEV_DATA_OUT;
 	} else {
 		printf("hd: unsupported cmd %d\n", cd[0]);
@@ -121,14 +135,16 @@ int hd_handle_data_in(scsi_dev_t *dev, uint8_t *msg, int buflen) {
 	if (hd->cmd[0]==3) { //sense
 		int clen=hd->cmd[4];
 		if (clen==0) clen=4; //per scsi spec
-		int lun=hd->cmd[1]>>5;
+		//we don't actually care about luns for now...
+		//int lun=hd->cmd[1]>>5;
 		if (clen>buflen) clen=buflen;
 		memcpy(msg, sense, clen);
 		return clen;
 	} else if (hd->cmd[0]==8) { //read
 		int lba=(hd->cmd[1]<<16)+(hd->cmd[2]<<8)+(hd->cmd[3]);
-		int tlen=hd->cmd[4]; //note 0 means 256 blocks...
-		int blen=tlen*512;
+		int tlen=hd->cmd[4];
+		if (tlen==0) tlen=256; //0 means 256 blocks per the spec
+		int blen=tlen*512; //length in bytes
 		if (blen>buflen) blen=buflen;
 		for (int i=0; i<blen/512; i++) {
 			read_block(hd, lba+i, &msg[i*512]);
@@ -136,8 +152,8 @@ int hd_handle_data_in(scsi_dev_t *dev, uint8_t *msg, int buflen) {
 		return blen;
 	} else if (hd->cmd[0]==0xc2) {
 		//omti config command?
+		//we simply ignore this as we don't need it.
 	} else {
-//		printf("Unknown command: 0x%x\n", hd->cmd[0]);
 		assert(0 && "hd_handle_data_in: unknown cmd");
 	}
 	return 0;
@@ -149,7 +165,8 @@ static void hd_handle_data_out(scsi_dev_t *dev, uint8_t *msg, int len) {
 		//ignore
 	} else if (hd->cmd[0]==0xa) { //write
 		int lba=(hd->cmd[1]<<16)+(hd->cmd[2]<<8)+(hd->cmd[3]);
-		int tlen=hd->cmd[4]; //note 0 means 256 blocks...
+		int tlen=hd->cmd[4];
+		if (tlen==0) tlen=256; //per the spec 0 means 256 blocks
 		int blen=tlen*512;
 		if (blen>len) blen=len;
 		for (int i=0; i<blen/512; i++) {
@@ -162,9 +179,9 @@ static void hd_handle_data_out(scsi_dev_t *dev, uint8_t *msg, int len) {
 }
 
 static int hd_handle_status(scsi_dev_t *dev) {
-	scsi_hd_t *hd=(scsi_hd_t*)dev;
-	if (hd->cmd[0]==0) return 0;
-	return 0; //ok
+	//scsi_hd_t *hd=(scsi_hd_t*)dev;
+	//all commands return a status of 0=OK for now.
+	return 0;
 }
 
 scsi_dev_t *scsi_dev_hd_new(const char *imagename, const char *cow_dir) {
@@ -185,7 +202,7 @@ scsi_dev_t *scsi_dev_hd_new(const char *imagename, const char *cow_dir) {
 		}
 		hd->hdfile=fopen(imagename, "rb");
 	} else {
-		//open image r/w
+		//open image r/w so we can write back to it.
 		hd->hdfile=fopen(imagename, "r+b");
 		hd->cow_dir=NULL;
 	}

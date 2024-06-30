@@ -70,8 +70,9 @@ static int uart_poll_for_console_character() {
 	if (result > 0 && FD_ISSET(STDIN_FILENO, &input)) {
 		// read single character
 		result = read(STDIN_FILENO, &c, 1);
-		if (result == 1)
+		if (result == 1) {
 			return c;
+		}
 	}
 
 	// Fall through, nothing waiting
@@ -83,10 +84,7 @@ void uart_console_printc(char val) {
 	fflush(stdout);
 }
 
-
-//The UARTs are Mostek MK68564 chips.
-
-
+//Registers defined in the dual UART chip
 #define REG_CMD 0
 #define REG_MODECTL 1
 #define REG_INTCTL 2
@@ -108,7 +106,7 @@ typedef struct {
 	uint8_t regs[32];
 	uint8_t char_rcv;
 	uint8_t has_char_rcv;
-	uint8_t ticks_to_loopback;
+	uint8_t us_to_loopback;
 } chan_t;
 
 struct uart_t {
@@ -129,20 +127,23 @@ uart_t *uart_new(const char *name, int is_console) {
 }
 
 static void check_ints(uart_t *u) {
-	int need_int=0;
-	int int_chan=0;
+	int need_int=0; //1 if we need to raise an interrupt
+	int int_chan=0; //channel to raise the interrupt for
 	for (int c=0; c<2; c++) {
 		bool is_in_loopback = (u->chan[c].regs[0]&1);
 		if (u->chan[c].regs[REG_INTCTL] & 0x18) {
+			//need to handle recv interrupts
 			if (u->chan[c].has_char_rcv) {
 				if (is_in_loopback) {
-					if (u->chan[c].ticks_to_loopback==0) {
+					//should only receive the char after a while
+					if (u->chan[c].us_to_loopback==0) {
 						need_int=1;
 						int_chan=c;
 					}
 				} else {
-						need_int=1;
-						int_chan=c;
+					//got the char from the console; no need for delay
+					need_int=1;
+					int_chan=c;
 				}
 			}
 		}
@@ -160,7 +161,6 @@ static void check_ints(uart_t *u) {
 					vect|=0x6; // Ch A recv char available
 				}
 			}
-			//printf("vect 0x%x\n", vect);
 			emu_raise_int(vect, need_int?INT_LEVEL_UART:0, 0); // DMA
 		}
 		u->int_raised=need_int;
@@ -186,9 +186,10 @@ void uart_write8(void *obj, unsigned int addr, unsigned int val) {
 	} else if (a==REG_DATA) {
 		UART_LOG_DEBUG("uart %s chan %s: write data reg 0x%X\n", u->name, chan?"B":"A", val);
 		if (u->chan[chan].regs[0]&1) { //loop mode
+			//return the same character in rx after a delay
 			u->chan[chan].has_char_rcv=1;
 			u->chan[chan].char_rcv=val;
-			u->chan[chan].ticks_to_loopback=80;
+			u->chan[chan].us_to_loopback=80;
 			UART_LOG_DEBUG("uart %s chan %s: write send loopback char 0x%X\n", u->name, chan?"B":"A", val);
 		} else {
 			//Huh. The main console is on channel *B* of the UART.
@@ -230,8 +231,11 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 	if (a==REG_STAT0) {
 		//D7-0: break, underrun, cts, hunt, dcd, tx buf empty, int pending, rx char avail
 		int r=0;
-		if (u->chan[chan].ticks_to_loopback==0) r|=0x4;
-		if (u->chan[chan].has_char_rcv && u->chan[chan].ticks_to_loopback==0) r|=0x3;
+		if (u->chan[chan].us_to_loopback==0) r|=0x4; //handle tx buf empty flag
+		if (u->chan[chan].has_char_rcv && u->chan[chan].us_to_loopback==0) {
+			//should actually only set int pending flag when rx int is enabled...
+			r|=0x3;
+		}
 		UART_LOG_DEBUG("uart %s chan %s: read8 status0 -> %x\n", u->name, chan?"B":"A", addr, r);
 		ret=r;
 	} else if (a==REG_STAT1) {
@@ -239,18 +243,14 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 
 		//The diags only run two tests on this, and either expect 0x41 or 0x11 here. We simply
 		//hardcode this dependent on the test char. Yes, it's dirty, but we're never gonna
-		//use the CRC functionality anyway... right?
+		//need the CRC functionality anyway.
 		int r=0x41;
 		if (u->chan[chan].char_rcv==0x3E) r=0x11;
 
 		UART_LOG_DEBUG("uart %s chan %s: read8 status1 -> %x\n", u->name, chan?"B":"A", addr, r);
 		ret=r;
 	} else if (a==REG_DATA) {
-		if (u->is_console && !is_in_loopback) {
-			UART_LOG_DEBUG("read char %x\n", u->chan[chan].char_rcv);
-		} else {
-			UART_LOG_DEBUG("read char %x\n", u->chan[chan].char_rcv);
-		}
+		UART_LOG_DEBUG("read char %x\n", u->chan[chan].char_rcv);
 		u->chan[chan].has_char_rcv=0;
 		ret=u->chan[chan].char_rcv;
 	}
@@ -263,19 +263,17 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 
 void uart_tick(uart_t *u, int ticklen_us) {
 	for (int c=0; c<2; c++) {
-		if (u->chan[c].has_char_rcv && u->chan[c].ticks_to_loopback) {
-			if (u->chan[c].ticks_to_loopback>ticklen_us){
-				u->chan[c].ticks_to_loopback-=ticklen_us;
+		if (u->chan[c].has_char_rcv && u->chan[c].us_to_loopback) {
+			if (u->chan[c].us_to_loopback>ticklen_us){
+				u->chan[c].us_to_loopback-=ticklen_us;
 			} else {
-				u->chan[c].ticks_to_loopback=0;
+				u->chan[c].us_to_loopback=0;
 			}
 		}
 	}
 
 	// if our console uart has ints enabled on ch B just poll it
-
 	if (u->is_console) {
-
 		int chan = 1; // B
 		if (u->chan[chan].regs[REG_INTCTL] & 0x18) {
 			int in_ch = uart_poll_for_console_character();

@@ -19,6 +19,7 @@
 #include "log.h"
 #include "emscripten_env.h"
 
+//Strings defining the various log modules
 const char *log_str[]={
 	[LOG_SRC_UART]="uart",
 	[LOG_SRC_CSR]="csr",
@@ -31,11 +32,13 @@ const char *log_str[]={
 	[LOG_SRC_STRACE]="strace",
 };
 
+//Strings defining the various log levels.
 const char *level_str[]={
 	"err", "warn", "notice", "info", "debug"
 };
 
-int  loglevel_for(const char *str) {
+//Returns the log level id for a given string in level_str
+int loglevel_for(const char *str) {
 	for (int i=0; i<LOG_LVL_MAX; i++) {
 		if (strcmp(str, level_str[i])==0) {
 			return i;
@@ -45,10 +48,11 @@ int  loglevel_for(const char *str) {
 }
 
 //parses either e.g. 'notice' to set all srcs to that,
-//or 'rtc=notice' to only set that source to the level.
+//or e.g. 'rtc=notice' to only set that source to the level.
 //return 1 on error, 0 on ok
 int parse_loglvl_str(char *str) {
 	char *s=strchr(str, '=');
+	if (!s) s=strchr(str, ':'); //cause I keep mistyping emu:debug instead of emu=debug
 	if (!s) {
 		int lvl=loglevel_for(str);
 		if (lvl==-1) return 1;
@@ -92,6 +96,7 @@ int main(int argc, char **argv) {
 #ifdef __EMSCRIPTEN__
 	emscripten_init();
 #endif
+	//Parse commandline args
 	int error=0;
 	for (int i=1; i<argc; i++) {
 		if (strcmp(argv[i], "-u15")==0 && i+1<argc) {
@@ -106,7 +111,7 @@ int main(int argc, char **argv) {
 			cfg.noyolo=1;
 		} else if (strcmp(argv[i], "-l")==0 && i+1<argc) {
 			i++;
-			error|=parse_loglvl_str(argv[i]);
+			error=parse_loglvl_str(argv[i]);
 		} else if (strcmp(argv[i], "-c")==0 && i+1<argc) {
 			i++;
 			cfg.cow_dir=argv[i];
@@ -116,8 +121,8 @@ int main(int argc, char **argv) {
 		} else {
 			printf("Unknown argument %s\n", argv[i]);
 			error=1;
-			break;
 		}
+		if (error) break;
 	}
 	int m=cfg.mem_size_bytes/(1024*1024);
 	if ((m & (m-1)) || m<1 || m>8) {
@@ -130,7 +135,7 @@ int main(int argc, char **argv) {
 		printf("Usage: %s [args]\n", argv[0]);
 		printf(" -u15 Path to U15 rom file\n");
 		printf(" -u17 Path to U17 rom file\n");
-		printf(" -r Try to run at realtime speeds\n");
+		printf(" -r Try to run at realtime speed\n");
 		printf(" -m n Set the amount of memory to n megabytes\n");
 		printf(" -l module=level - set logging level of module to specified level\n");
 		printf(" -l level - Set overal log level to specified level\n");

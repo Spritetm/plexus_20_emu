@@ -2,6 +2,7 @@
 #include "emscripten.h"
 
 void emscripten_init() {
+	//We want an IDBFS filesystem on /persist where we can store RTC and COW stuff.
 	EM_ASM(
 		FS.mkdir("/persist");
 		FS.mount(IDBFS, {}, "/persist");

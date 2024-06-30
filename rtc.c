@@ -55,18 +55,21 @@
 #define BIT_REGC_UF (1<<4)
 
 
-//Note we always keep time in binary and convert it when needed.
+//Note we always keep time in binary and convert it when needed. (though I'm not sure
+//if the Plexus ever uses bcd time)
 struct rtc_t {
 	uint8_t reg[14];
-	int us;
-	int intr_us;
-	int intr_us_max;
+	int us;				//amount of us we are in. At 100000, the seconds tick over.
+	int intr_us;		//time in us since a square wave output interrupt
+	int intr_us_max;	//period in us of square wave output
 };
 
+//Convert value binary->bcd
 static int tobcd(int i) {
 	return (i/10)*16+(i%10);
 }
 
+//Convert value bcd->binary
 static int tobin(int i) {
 	return (i>>4)*10+(i&0xf);
 }
@@ -81,6 +84,8 @@ static void handle_irq(rtc_t *r) {
 //	if (irq) emu_raise_rtc_int();
 }
 
+//Make sure the rtc values are sane, as in fall in the ranges specified by
+//the datasheet.
 void rtc_sanitize_vals(rtc_t *r) {
 	if (r->reg[CALSECS]>=60) r->reg[CALSECS]=0;
 	if (r->reg[CALMINS]>=60) r->reg[CALMINS]=0;
@@ -93,7 +98,6 @@ void rtc_sanitize_vals(rtc_t *r) {
 	if (r->reg[CALMONTH]>12) r->reg[CALMONTH]=12;
 	if (r->reg[CALYEAR]>99) r->reg[CALYEAR]=0;
 }
-
 
 void rtc_write8(void *obj, unsigned int a, unsigned int val) {
 	a=a/2; //rtc is on odd addresses
@@ -156,6 +160,7 @@ rtc_t *rtc_new() {
 void rtc_tick(rtc_t *r, int ticklen_us) {
 	r->us+=ticklen_us;
 	while (r->us>1000000) {
+		//Update clock for next second.
 		if ((r->reg[CALREGB]&BIT_REGB_SET)==0) {
 			r->reg[CALREGC]|=BIT_REGC_UF;
 			r->reg[CALSECS]++;
@@ -193,8 +198,10 @@ void rtc_tick(rtc_t *r, int ticklen_us) {
 			}
 			handle_irq(r);
 		}
+		//One second of simulation time passed.
 		r->us-=1000000;
 	}
+	//Handle square wave interrupt output
 	r->intr_us+=ticklen_us;
 	if (r->intr_us_max && r->intr_us>r->intr_us_max) {
 		r->intr_us=r->intr_us%r->intr_us_max;

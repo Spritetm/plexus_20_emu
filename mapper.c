@@ -1,5 +1,5 @@
 /*
- Simulation of the Mapper memory space and functions
+ Simulation of the mapper memory space and functions
 */
 
 /*
@@ -36,6 +36,11 @@ a page size of 4K.
 We have space for 8K physical pages; this means we could map
 to 32MiB of physical RAM.
 
+Note that W1 and W0 are kinda messed up here... in the docs, W1 is 
+the word written when a[1]=1 and W0 the one written when a[1]=0. The
+68K is big-endian, so when parsed as a 32-bit field, the result would
+be (W0<<16)+W1. However, this code does it the other way around, and
+when parsing access permissions, it checks against (W1<<16)+W0.
 */
 
 typedef struct {
@@ -53,8 +58,8 @@ typedef struct {
 #define W1_X 0x2000
 #define W1_PAGE_MASK 0x1FFF
 
-#define W0_REFD 0x2
-#define W0_ALTRD 0x1
+#define W0_REFD 0x2			//Page is accesed
+#define W0_ALTRD 0x1		//Page is written to
 #define W0_UID_SHIFT 8
 #define W0_UID_MASK 0xff
 
@@ -62,13 +67,13 @@ struct mapper_t {
 	//2K entries for usr, 2K for sys
 	desc_t desc[4096];
 	ram_t *physram;
-	int sysmode; //indicates if next accesses are in sysmode or not
-	int cur_id;
-	int yolo;
+	int sysmode;	//indicates if next accesses are in sysmode or not
+	int cur_id;		//current mapper ID
+	int yolo;		//'yolo-hack' enable flag
 };
 
 void mapper_set_mapid(mapper_t *m, uint8_t id) {
-	if (m->cur_id!=id) MAPPER_LOG_INFO("Switching to map id %d\n", id);
+	if (m->cur_id!=id) MAPPER_LOG_DEBUG("Switching to map id %d\n", id);
 	m->cur_id=id;
 }
 
@@ -95,6 +100,8 @@ static int access_allowed_page(mapper_t *m, unsigned int page, int access_flags)
 	return fault;
 }
 
+//Returns either ACCESS_ERROR_OK if address can be accessed, or ACCESS_ERROR_A for a
+//permission issue, or ACCESS_ERROR_U for a mapper ID mismatch.
 int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags) {
 	if (a>=0x800000) {
 		//Anything except RAM does not go through the mapper, but is only
@@ -188,8 +195,10 @@ void mapper_set_sysmode(mapper_t *m, int cpu_in_sysmode) {
 	m->sysmode=cpu_in_sysmode;
 }
 
+//Map virtual page to phyical page. Note: does not check access rights.
+//Returns corresponding physical address for virtual address a.
+//Also modifies altered/referenced bits as needed.
 int do_map(mapper_t *m, unsigned int a, unsigned int is_write) {
-	//Map virtual page to phyical page.
 	int p=a>>12; //4K pages
 	assert(p<2048);
 	if (m->sysmode) p+=SYS_ENTRY_START;
@@ -199,9 +208,8 @@ int do_map(mapper_t *m, unsigned int a, unsigned int is_write) {
 
 	int phys_p=m->desc[p].w1&W1_PAGE_MASK;
 	int phys=(a&0xFFF)|(phys_p<<12);
+	//map to 8MiB physical memory at max
 	phys&=((8*1024*1024)-1);
-//	assert(phys<8*1024*1024);
-//	MAPPER_LOG_DEBUG("do_map %s 0x%x to 0x%x, virt page %d phys page %d\n", m->sysmode?"sys":"usr", a, phys, p, phys_p);
 	return phys;
 }
 

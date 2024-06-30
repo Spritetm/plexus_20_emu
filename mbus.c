@@ -18,8 +18,6 @@
 #include "emu.h"
 #include "log.h"
 
-//Simple and stupid mbus loopback driver. Only good to pass diags.
-
 // Debug logging
 #define MBUS_LOG(msg_level, format_and_args...) \
 	log_printf(LOG_SRC_MBUS, msg_level, format_and_args)
@@ -35,6 +33,7 @@ but they obvs can't do that for 8-bit writes/reads. So 16-bit writes go through
 transparently, but a write/read to 8-bit address x happens to x^1 :X
 */
 
+//Returns true if multibus is in held state.
 static int mbus_held() {
 	if (!emu_try_mbus_held()) return 0;
 	MBUS_LOG_DEBUG("Blocking op: bus held\n");

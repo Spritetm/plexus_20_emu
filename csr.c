@@ -126,7 +126,7 @@ struct csr_t {
 
 int csr_cpu_is_reset(csr_t *csr, int cpu) {
 	int r=csr->reg[CSR_O_KILL/2] & (1<<cpu);
-	if (cpu==1) r=!r; //job kill is low active
+	if (cpu==1) r=!r; //job kill is low active (dma kill is high active)
 	return r;
 }
 
@@ -159,8 +159,6 @@ void csr_set_access_error(csr_t *csr, int cpu, int type, int addr, int is_write)
 	if (type&ACCESS_ERROR_MBTO) {
 		v|=ERR_MBTO;
 		if (emu_get_mb_diag()) {
-			if (is_write)
-				emu_raise_int(INT_VECT_MB_IF_ERR, INT_LEVEL_MB_IF_ERR, 1);
 			csr->reg[CSR_I_MBERR/2]=(addr>>11)&0xfe;
 			if (!is_write) csr->reg[CSR_I_MBERR/2]|=0x1;
 		}
@@ -175,8 +173,18 @@ void csr_set_parity_error(csr_t *c, int hl) {
 	if (hl&1) c->reg[CSR_I_PERR1/2]|=(1<<13);
 }
 
+static void update_scsi_regs(csr_t *c) {
+	int b=scsi_get_bytecount(c->scsi);
+	c->reg[CSR_O_SC_C/2]=b>>16;
+	c->reg[CSR_O_SC_C/2+1]=b;
+	b=scsi_get_pointer(c->scsi);
+	c->reg[CSR_O_SC_P/2]=b>>16;
+	c->reg[CSR_O_SC_P/2+1]=b;
+}
+
 void csr_write16(void *obj, unsigned int a, unsigned int val) {
 	csr_t *c=(csr_t*)obj;
+	update_scsi_regs(c);
 	if (a==CSR_I_PERR1) return; //ro
 	if (a==CSR_O_RSEL) {
 		CSR_LOG_DEBUG("csr write16 0x%X (reset sel) val 0x%X\n", a, val);
@@ -243,12 +251,7 @@ void csr_write8(void *obj, unsigned int a, unsigned int val) {
 
 unsigned int csr_read16(void *obj, unsigned int a) {
 	csr_t *c=(csr_t*)obj;
-	int b=scsi_get_bytecount(c->scsi);
-	c->reg[CSR_O_SC_C/2]=b>>16;
-	c->reg[CSR_O_SC_C/2+1]=b;
-	b=scsi_get_pointer(c->scsi);
-	c->reg[CSR_O_SC_P/2]=b>>16;
-	c->reg[CSR_O_SC_P/2+1]=b;
+	update_scsi_regs(c);
 
 	unsigned int ret=c->reg[a/2];
 	if (a==CSR_O_KILL) {

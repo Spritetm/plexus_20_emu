@@ -18,8 +18,8 @@
 
 struct ram_t {
 	int size_bytes;
-	int amask;
-	uint8_t *buffer;
+	int amask;		//if we AND an address with this, it will always fall into size_bytes
+	uint8_t *buffer;	//main memory storage
 };
 
 // Debug logging
@@ -84,13 +84,14 @@ ram_t *rom_new(const char *filename, int size_bytes) {
 }
 
 ram_t *ram_new(int size_bytes) {
+	//check if size is power of two
 	if (size_bytes & (size_bytes-1)) {
 		printf("ram_new: size should be power of two\n");
 		exit(0);
 	}
 	ram_t *ram=calloc(sizeof(ram_t), 1);
 	ram->size_bytes=size_bytes;
-	ram->amask=(size_bytes-1); //works if size_bytes is power of two
+	ram->amask=(size_bytes-1); //works if size_bytes is power of two, which we checked above
 	ram->buffer=calloc(size_bytes, 1);
 	return ram;
 }
