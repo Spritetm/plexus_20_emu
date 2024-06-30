@@ -1,3 +1,12 @@
+/*
+ Simulation of the non-volatile RAM in the MC146818 RTC chip.
+*/
+
+/*
+
+ToDo: license
+
+ */
 #include <assert.h>
 #include <stdlib.h>
 #include <stdint.h>

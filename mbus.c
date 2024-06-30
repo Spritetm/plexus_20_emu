@@ -1,3 +1,17 @@
+/*
+ Simulation of the Multibus memory space.
+ Note that this only simulates enough to pass the diags and not crash the 
+ kernel. There is no infrastructure for simulating actual Multibus cards.
+*/
+
+/*
+ * ----------------------------------------------------------------------------
+ * "THE BEER-WARE LICENSE" (Revision 42):
+ * <jeroen@spritesmods.com> wrote this file.  As long as you retain this notice you
+ * can do whatever you want with this stuff. If we meet some day, and you think
+ * this stuff is worth it, you can buy me a beer in return. - Sprite_tm
+ * ----------------------------------------------------------------------------
+ */
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>

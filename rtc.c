@@ -1,3 +1,15 @@
+/*
+ Simulation of the clock logic of the MC146818 RTC chip.
+*/
+
+/*
+ * ----------------------------------------------------------------------------
+ * "THE BEER-WARE LICENSE" (Revision 42):
+ * <jeroen@spritesmods.com> wrote this file.  As long as you retain this notice you
+ * can do whatever you want with this stuff. If we meet some day, and you think
+ * this stuff is worth it, you can buy me a beer in return. - Sprite_tm
+ * ----------------------------------------------------------------------------
+ */
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -5,8 +17,6 @@
 #include "emu.h"
 #include "log.h"
 #include "rtc.h"
-
-//RTC is MC146818
 
 // Debug logging
 #define RTC_LOG(msg_level, format_and_args...) \
