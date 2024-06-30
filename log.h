@@ -12,7 +12,7 @@ enum log_source {
 	LOG_SRC_RAMROM,
 	LOG_SRC_RTC,
 	LOG_SRC_EMU,
-        LOG_SRC_STRACE,
+	LOG_SRC_STRACE,
 	LOG_SRC_MAX //end sentinel, leave at end of enum
 };
 
