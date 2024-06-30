@@ -79,15 +79,13 @@ int main(int argc, char **argv) {
 	static_assert(sizeof(level_str)/sizeof(level_str[0])==LOG_LVL_MAX,
 					"level_str array out of sync");
 	emu_cfg_t cfg={
-#ifdef __EMSCRIPTEN__
 		.u15_rom="U15-MERGED.BIN",
 		.u17_rom="U17-MERGED.BIN",
+#ifdef __EMSCRIPTEN__
 		.cow_dir="persist/cow",
 		.rtcram="persist/rtcram.bin",
 		.realtime=1,
 #else
-		.u15_rom="../plexus-p20/ROMs/U15-MERGED.BIN",
-		.u17_rom="../plexus-p20/ROMs/U17-MERGED.BIN",
 		.rtcram="rtcram.bin",
 #endif
 		.hd0img="plexus-sanitized.img",
