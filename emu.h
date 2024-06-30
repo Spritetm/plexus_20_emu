@@ -32,6 +32,7 @@ typedef struct {
 	int realtime;
 	const char *cow_dir;
 	int mem_size_bytes;
+	int noyolo;
 } emu_cfg_t;
 
 void emu_start(emu_cfg_t *cfg);

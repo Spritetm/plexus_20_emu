@@ -580,12 +580,12 @@ csr_t *setup_csr(const char *name, const char *mmio_name, const char *scsi_name)
 	return r;
 }
 
-mapper_t *setup_mapper(const char *name, const char *mapram, const char *physram) {
+mapper_t *setup_mapper(const char *name, const char *mapram, const char *physram, int yolo) {
 	mem_range_t *m=find_range_by_name(name);
 	mem_range_t *mr=find_range_by_name(mapram);
 	mem_range_t *pr=find_range_by_name(physram);
 
-	mapper_t *map=mapper_new(pr->obj, pr->size);
+	mapper_t *map=mapper_new(pr->obj, pr->size, yolo);
 	m->obj=map;
 	m->write32=mapper_write32;
 	m->write16=mapper_write16;
@@ -852,7 +852,7 @@ void emu_start(emu_cfg_t *cfg) {
 	scsi_dev_t *hd1=scsi_dev_hd_new(cfg->hd0img, cfg->cow_dir);
 	scsi_add_dev(scsi, hd1, 0);
 	csr=setup_csr("CSR", "MMIO_WR", "SCSIBUF");
-	mapper=setup_mapper("MAPPER", "MAPRAM", "RAM");
+	mapper=setup_mapper("MAPPER", "MAPRAM", "RAM", !cfg->noyolo);
 	setup_mbus("MBUSMEM", "MBUSIO");
 	rtc_t *rtc=setup_rtc("RTC");
 

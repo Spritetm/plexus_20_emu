@@ -52,6 +52,7 @@ struct mapper_t {
 	ram_t *physram;
 	int sysmode; //indicates if next accesses are in sysmode or not
 	int cur_id;
+	int yolo;
 };
 
 void mapper_set_mapid(mapper_t *m, uint8_t id) {
@@ -97,6 +98,14 @@ int mapper_access_allowed(mapper_t *m, unsigned int a, int access_flags) {
 	assert(p<=2048 && "out of range addr");
 	if (access_flags&ACCESS_SYSTEM) p+=2048;
 	int r=access_allowed_page(m, p, access_flags);
+	//The 'yolo' hack: if enabled, the first 2 2 32-bit words in RAM are never 
+	//write-protected in system mode. The system needs these to be written for
+	//'init 2' to work, but at that time page 0 is write-protected. Up until now,
+	//we haven't found anything, either in hardware or software, that can allow
+	//this write through. Thanks to @ewen for the hack and the name.
+	if (p==2048 && a<8 && m->yolo) {
+		r&=~(W1_W<<16);
+	}
 	if (r && log_level_active(LOG_SRC_MAPPER, LOG_DEBUG)) {
 		MAPPER_LOG_DEBUG("Mapper: Access fault at addr %x page %d. CPU state:\n", a, p);
 		dump_cpu_state();
@@ -222,9 +231,10 @@ unsigned int mapper_ram_read32(void *obj, unsigned int a) {
 	return (mapper_ram_read16(obj, a)<<16) | (mapper_ram_read16(obj, a+2)&0xffff);
 }
 
-mapper_t *mapper_new(ram_t *physram, int size) {
+mapper_t *mapper_new(ram_t *physram, int size, int yolo) {
 	mapper_t *ret=calloc(sizeof(mapper_t), 1);
 	ret->physram=physram;
+	ret->yolo=yolo;
 	return ret;
 }
 
