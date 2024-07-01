@@ -3,8 +3,10 @@
 */
 
 /*
-ToDo: License
- */
+SPDX-License-Identifier: MIT
+Copyright (c) 2024 Ewen McNeill <ewen@naos.co.nz>
+*/
+
 #include "log.h"
 #include <stdio.h>
 #include <stdarg.h>

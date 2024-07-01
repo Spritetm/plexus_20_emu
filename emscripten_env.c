@@ -1,3 +1,8 @@
+/*
+SPDX-License-Identifier: MIT
+Copyright (c) 2024 Sprite_tm <jeroen@spritesmods.com>
+*/
+
 #include "emscripten_env.h"
 #include "emscripten.h"
 

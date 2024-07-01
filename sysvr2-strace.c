@@ -1,3 +1,12 @@
+/*
+Trap handler for SystemV strace output
+*/
+
+/*
+SPDX-License-Identifier: MIT
+Copyright (c) 2024 Paul Brook <paul@nowt.org>
+*/
+
 #include "sysvr2-strace.h"
 #include <stdbool.h>
 #include <stdio.h>

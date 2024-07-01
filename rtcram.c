@@ -3,10 +3,10 @@
 */
 
 /*
+SPDX-License-Identifier: MIT
+Copyright (c) 2024 Ewen McNeill <ewen@naos.co.nz>
+*/
 
-ToDo: license
-
- */
 #include <assert.h>
 #include <stdlib.h>
 #include <stdint.h>
