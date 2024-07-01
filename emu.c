@@ -172,14 +172,15 @@ void dump_cpu_state_all() {
 	for (int i=0; i<sizeof(regs)/sizeof(regs[0]); i++) {
 		EMU_LOG_INFO("%s\t%08X%s", regnames[i], m68k_get_reg(NULL, regs[i]), ((i&3)==3)?"\n":"\t");
 	}
-	int pc=m68k_get_reg(NULL, M68K_REG_PC);
+	int pc=m68k_get_reg(NULL, M68K_REG_PPC);
 	int pos=pc-18;
 	char buf[1024];
 	//try to align to full insn
 	pos+=m68k_disassemble(buf, pos, M68K_CPU_TYPE_68010);
 	while (pos<pc+16) {
-		pos+=m68k_disassemble(buf, pos, M68K_CPU_TYPE_68010);
+		int newpos=pos+m68k_disassemble(buf, pos, M68K_CPU_TYPE_68010);
 		EMU_LOG_INFO("%06X %s%s\n", pos, buf, pos==pc?"\t\t<-- PC":"");
+		pos=newpos;
 	}
 	EMU_LOG_INFO("END DUMP\n");
 }
