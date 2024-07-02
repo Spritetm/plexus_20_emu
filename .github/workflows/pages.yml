@@ -47,7 +47,7 @@ jobs:
         run: cd Musashi; make
       - name: Compile for web
         working-directory: ${{ github.workspace }}/
-        run: source ./emsdk/emsdk_env.sh; ls -l; make plexem.mjs
+        run: source ./emsdk/emsdk_env.sh; make plexem.mjs
       - name: Install web deps and collect artifacts
         working-directory: ${{ github.workspace }}/
         run: make webdeploy

@@ -13,6 +13,7 @@ Copyright (c) 2024 Sprite_tm <jeroen@spritesmods.com>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <signal.h>
 #include "uart.h"
 #include "emu.h"
 #include "log.h"
@@ -28,6 +29,7 @@ Copyright (c) 2024 Sprite_tm <jeroen@spritesmods.com>
 	log_printf(LOG_SRC_UART, msg_level, format_and_args)
 #define UART_LOG_DEBUG(format_and_args...) UART_LOG(LOG_DEBUG, format_and_args)
 #define UART_LOG_INFO(format_and_args...)  UART_LOG(LOG_INFO,  format_and_args)
+#define UART_LOG_WARNING(format_and_args...)  UART_LOG(LOG_WARNING,  format_and_args)
 
 // Console input handling
 //
@@ -39,6 +41,15 @@ static void uart_disable_console_raw_mode() {
 	UART_LOG_INFO("Leaving tty raw mode\n");
 }
 
+
+int char_from_signal=-1;
+
+static void uart_sig_hdl(int sig) {
+	if (sig==SIGINT) char_from_signal=0x03;
+	if (sig==SIGQUIT) char_from_signal=0x1C;
+	if (sig==SIGSTOP) char_from_signal=0x1a;
+}
+
 static void uart_set_console_raw_mode() {
 	tcgetattr(STDIN_FILENO, &orig_termios);
 	atexit(uart_disable_console_raw_mode);
@@ -48,7 +59,17 @@ static void uart_set_console_raw_mode() {
 	raw.c_lflag &= ~(ECHO | ICANON);
 	int result = tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 	UART_LOG_INFO("Entering tty raw mode: %d (%d)\n", result, errno);
+	//Exiting an emulator doesn't make sense in the web version
+#ifndef __EMSCRIPTEN__
+	UART_LOG_WARNING("TO EXIT EMULATOR: Press Ctrl-C three times.\n");
+#endif
+
+	signal(SIGINT, uart_sig_hdl);
+	signal(SIGQUIT, uart_sig_hdl);
+	signal(SIGTSTP, uart_sig_hdl);
 }
+
+static int ctrl_c_pressed_times=0;
 
 static int uart_poll_for_console_character() {
 	char c;
@@ -59,6 +80,23 @@ static int uart_poll_for_console_character() {
 	};
 	int result;
 
+	//If user pressed ctl-c or any other character that generates a
+	//signal instead, handle that.
+	if (char_from_signal!=-1) {
+		int r=char_from_signal;
+		char_from_signal=-1;
+		if (r==0x03) { //ctrl-c
+#ifndef __EMSCRIPTEN__
+			ctrl_c_pressed_times++;
+#endif
+			if (ctrl_c_pressed_times==3) {
+				UART_LOG_WARNING("Ctrl-C pressed three times. Bye!\n");
+				exit(0);
+			}
+		}
+		return r;
+	}
+
 	FD_ZERO(&input);
 	FD_SET(STDIN_FILENO, &input);
 
@@ -68,6 +106,7 @@ static int uart_poll_for_console_character() {
 		// read single character
 		result = read(STDIN_FILENO, &c, 1);
 		if (result == 1) {
+			ctrl_c_pressed_times=0; //reset ctrl-c counter
 			return c;
 		}
 	}
