@@ -23,10 +23,7 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout submodules
-        working-directory: ${{ github.workspace }}/
-        run: git submodule update --recursive --init
-      - name: Checkout binaries for web version
+      - name: Checkout rom and HD image for web version
         working-directory: ${{ github.workspace }}/
         run: |
          git clone --depth=1 https://github.com/misterblack1/plexus-p20.git
@@ -43,9 +40,9 @@ jobs:
       - name: Compile for web
         working-directory: ${{ github.workspace }}/
         run: source ./emsdk/emsdk_env.sh; ls -l; make plexem.mjs
-      - name: Move results
+      - name: Install web deps and collect artifacts
         working-directory: ${{ github.workspace }}/
-        run: mkdir web; mv plexem.* web; mv web/plexem.html web/index.html
+        run: make webdeploy
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
