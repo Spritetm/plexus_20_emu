@@ -13,3 +13,5 @@ plexem.wasm
 plexem.wasm.map
 plexem.worker.mjs
 cow/
+node_modules/
+package-lock.json

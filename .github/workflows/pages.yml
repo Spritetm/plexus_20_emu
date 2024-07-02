@@ -23,6 +23,14 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       - uses: actions/checkout@v4
+      - name: Cache emsdk
+        id: cache-emsdk-3_1_61
+        uses: actions/cache@v3
+        env: 
+          cache-name: cache-emsdk
+        with:
+          path: emsdk
+          key: cache-emsdk-3_1_61
       - name: Checkout rom and HD image for web version
         working-directory: ${{ github.workspace }}/
         run: |
@@ -32,8 +40,8 @@ jobs:
       - name: Get emscripten
         working-directory: ${{ github.workspace }}/
         run: |
-         git clone --depth=1 https://github.com/emscripten-core/emsdk.git
-         cd emsdk; ./emsdk install latest; ./emsdk activate latest
+         [ ! -e emsdk ] && git clone --depth=1 https://github.com/emscripten-core/emsdk.git
+         cd emsdk; ./emsdk install 3.1.61; ./emsdk activate 3.1.61
       - name: Generate musashi headers
         working-directory: ${{ github.workspace }}/
         run: cd Musashi; make

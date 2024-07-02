@@ -33,7 +33,7 @@ plexem.mjs: $(SRC) node_modules/xterm-pty
 
 # ToDo: could do a shallow clone of the tag we want... as soon as 0.10.2 is tagged
 node_modules/xterm-pty:
-	node install
+	npm install
 
 webdeploy: node_modules/xterm-pty plexem.mjs
 	mkdir -p web

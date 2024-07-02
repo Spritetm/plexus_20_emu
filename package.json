@@ -1,0 +1,8 @@
+{
+	"name": "plexem",
+	"version": "1.0.0",
+	"author": "Sprite_tm <jeroen@spritesmods.com>",
+	"dependencies": {
+		"xterm-pty": "0.10.1"
+	}
+}
