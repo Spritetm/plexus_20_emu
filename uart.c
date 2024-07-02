@@ -107,6 +107,14 @@ static int uart_poll_for_console_character() {
 		result = read(STDIN_FILENO, &c, 1);
 		if (result == 1) {
 			ctrl_c_pressed_times=0; //reset ctrl-c counter
+			//Swap around DEL and BSP. Terminals nowadays send the former,
+			//Unix expects the latter. Note you can usually press ctrl-backspace
+			//to get 'the other one', depending on your terminal.
+			if (c==0x7F) {
+				c=8;
+			} else if (c==8) {
+				c=0x7F;
+			}
 			return c;
 		}
 	}
