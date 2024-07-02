@@ -1,0 +1,23 @@
+
+body {
+	font-family: Sans-Serif;
+	background-color: #303030;
+	color: #ffffff;
+}
+
+a:link {
+	color: #808080;
+}
+
+a:visited {
+	color: #808080;
+}
+
+a:hover {
+	color: #FFFFFF;
+}
+
+dialog {
+	background-color: #303030;
+	color: #e0e0e0;
+}

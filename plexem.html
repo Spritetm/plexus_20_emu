@@ -2,6 +2,7 @@
 <html>
   <head>
     <link rel="stylesheet" href="xterm/css/xterm.css" />
+    <link rel="stylesheet" href="plexem.css" />
   </head>
   <body>
     <div id="terminal"></div>
@@ -23,5 +24,64 @@
         pty: slave
       });
     </script>
+	<script>
+		document.addEventListener("DOMContentLoaded", function(event) {
+			const showabout = document.getElementById("showabout");
+			const showfaq = document.getElementById("showfaq");
+			const closeabout = document.getElementById("closeabout");
+			const closefaq = document.getElementById("closefaq");
+			const about = document.getElementById("about");
+			const faq = document.getElementById("faq");
+
+			showabout.addEventListener("click", () => {
+				about.showModal();
+			});
+			showfaq.addEventListener("click", () => {
+				faq.showModal();
+			});
+			closeabout.addEventListener("click", () => {
+				about.close();
+			});
+			closefaq.addEventListener("click", () => {
+				faq.close();
+			});
+		});
+	</script>
+	<a href="#" id="showfaq">Does not work?</a> - <a href="#" id="showabout">About</a>
+	<dialog id="faq">
+		<p>
+		This is a pretty faithful Plexus system emulator. It runs more or less in real time, meaning things may take a while. If you get stuck, try the following:
+		</p>
+		<ul>
+		<li>If all you see is 'PLEXUS SELFTEST REV 3.3', the Plexus is running its selftest. This will take about 30 seconds, or you can abort it by typing a '!' character.</li>
+		<li>If you're at the 'PLEXUS PRIMARY BOOT REV 1.2' prompt, the Plexus is waiting for you to do something. Try pressing enter to boot Unix.</li>
+		<li>If you get weird colored blocks in the terminal, please allow using canvas image data for this site. There probably is an icon for that in the address bar.</li>
+		<li>Hard disk changes are changed to local storage in your browser. Changing computers or browsers will clear it.</li>
+		</ul>
+		<button id="closefaq">Close</button>
+	</dialog>
+	<dialog id="about">
+		<p>
+		This is an emulator for a Plexus P/20 system. It is an Unix workstation from the '80's. It
+		runs a SystemV Unix variation on a dual 68010 processor mainboard. Adrian Black 
+		(from Adrian's Digital Basement) did some videos on the topic of getting one to work:
+		<a href="https://www.youtube.com/watch?v=iltZYXg5hZw">1</a>
+		<a href="https://www.youtube.com/watch?v=lCPZAYvk940">2</a>
+		<a href="https://www.youtube.com/watch?v=_IrxvDE6Fyo">3</a>
+		<a href="https://www.youtube.com/watch?v=Ve1SuuRkx_o>4</a>
+		<a href="https://www.youtube.com/watch?v=10b50ECWXLk>5</a>.
+		</p>
+		<p>
+		This emulator is written in C. While it can be ran as a native application, the version
+		you're looking at right now is compiled to webassembly using 
+		<a href="https://emscripten.org/">Emscripten</a>. It uses 
+		<a href="https://xtermjs.org/">xterm.js</a> for the fancy terminal, which is connected
+		to Emscripten via <a href="https://github.com/mame/xterm-pty">xterm-pty</a>.
+		</p>
+		<p>
+		Plexus emulator &copy; 2024 Sprite_tm and contributors. Licensed under the MIT license. <a href="https://github.com/Spritetm/plexus_20_emu">Source code</a> for this emulator is on Github.
+		</p>
+		<button id="closeabout">Close</button>
+	</dialog>
   </body>
 </html>
