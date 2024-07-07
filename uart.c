@@ -44,8 +44,13 @@ static void uart_disable_console_raw_mode() {
 
 int char_from_signal=-1;
 
+static void ctrl_c_inc();
+
 static void uart_sig_hdl(int sig) {
-	if (sig==SIGINT) char_from_signal=0x03;
+	if (sig==SIGINT) {
+		ctrl_c_inc();
+		char_from_signal=0x03;
+	}
 	if (sig==SIGQUIT) char_from_signal=0x1C;
 	if (sig==SIGSTOP) char_from_signal=0x1a;
 }
@@ -71,6 +76,16 @@ static void uart_set_console_raw_mode() {
 
 static int ctrl_c_pressed_times=0;
 
+static void ctrl_c_inc() {
+#ifndef __EMSCRIPTEN__
+	ctrl_c_pressed_times++;
+#endif
+	if (ctrl_c_pressed_times==3) {
+		UART_LOG_WARNING("Ctrl-C pressed three times. Bye!\n");
+		exit(0);
+	}
+}
+
 static int uart_poll_for_console_character() {
 	char c;
 	fd_set input;
@@ -85,15 +100,6 @@ static int uart_poll_for_console_character() {
 	if (char_from_signal!=-1) {
 		int r=char_from_signal;
 		char_from_signal=-1;
-		if (r==0x03) { //ctrl-c
-#ifndef __EMSCRIPTEN__
-			ctrl_c_pressed_times++;
-#endif
-			if (ctrl_c_pressed_times==3) {
-				UART_LOG_WARNING("Ctrl-C pressed three times. Bye!\n");
-				exit(0);
-			}
-		}
 		return r;
 	}
 
