@@ -56,6 +56,7 @@ Copyright (c) 2024 Sprite_tm <jeroen@spritesmods.com>
 	log_printf(LOG_SRC_EMU, msg_level, format_and_args)
 #define EMU_LOG_DEBUG(format_and_args...) EMU_LOG(LOG_DEBUG, format_and_args)
 #define EMU_LOG_INFO( format_and_args...) EMU_LOG(LOG_INFO,  format_and_args)
+#define EMU_LOG_ERROR( format_and_args...) EMU_LOG(LOG_ERR,  format_and_args)
 
 typedef struct mem_range_t mem_range_t;
 
@@ -257,6 +258,18 @@ void setup_rom(const char *name, const char *filename) {
 	m->write16=nop_write;
 	m->write32=nop_write;
 	EMU_LOG_INFO("Loaded ROM '%s' into section '%s' at addr %x\n", filename, name, m->offset);
+}
+
+static int is_rom_sane(const char *name) {
+	mem_range_t *m=find_range_by_name(name);
+	uint32_t boot_vect=m->read32(m->obj, 4);
+	//boot vector needs to be aligned to even bytes
+	if (boot_vect&1) return 0;
+	//boot vector needs to point to a sane address
+	if (boot_vect<8) return 0;
+	if (boot_vect>0x810000) return 0;
+	//Seems OK.
+	return 1;
 }
 
 //Set up a range for an UART.
@@ -933,6 +946,16 @@ void emu_start(emu_cfg_t *cfg) {
 	mapper=setup_mapper("MAPPER", "MAPRAM", "RAM", !cfg->noyolo);
 	setup_mbus("MBUSMEM", "MBUSIO");
 	rtc_t *rtc=setup_rtc("RTC");
+
+	//Note: if you get these messages, are you sure you downloaded the ROMs via the *RAW* link in Github and
+	//not just threw the URL from your browser into wget or curl?
+	if (!is_rom_sane("U15")) {
+		EMU_LOG_ERROR("U15 ROM image does not look like a valid boot ROM! Emulator might not boot properly.\n");
+	}
+	if (!is_rom_sane("U17")) {
+		EMU_LOG_ERROR("U17 ROM image does not look like a valid boot ROM! Emulator cannot boot, exiting.\n");
+		exit(1);
+	}
 
 	void *cpuctx[2];
 	cpuctx[0]=calloc(m68k_context_size(), 1); //dma cpu
