@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
 			cfg.u15_rom=argv[i];
 		} else if (strcmp(argv[i], "-u17")==0 && i+1<argc) {
 			i++;
-			cfg.u15_rom=argv[i];
+			cfg.u17_rom=argv[i];
 		} else if (strcmp(argv[i], "-hd")==0 && i+1<argc) {
 			i++;
 			cfg.hd0img=argv[i];
