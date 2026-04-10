@@ -325,7 +325,7 @@ void uart_tick(uart_t *u, int ticklen_us) {
 	// if our console uart has ints enabled on ch B just poll it
 	if (u->is_console) {
 		int chan = 1; // B
-		if (u->chan[chan].regs[REG_INTCTL] & 0x18) {
+		if (u->chan[chan].regs[REG_INTCTL] & 0x18 && !u->chan[chan].has_char_rcv) {
 			int in_ch = uart_poll_for_console_character();
 			if (in_ch >= 0) {
 				u->chan[chan].char_rcv = in_ch;
