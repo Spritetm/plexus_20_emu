@@ -7,7 +7,7 @@
 SPDX-License-Identifier: MIT
 Copyright (c) 2024 Sprite_tm <jeroen@spritesmods.com>
 */
-
+#define _XOPEN_SOURCE 600
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -23,6 +23,8 @@ Copyright (c) 2024 Sprite_tm <jeroen@spritesmods.com>
 #include <unistd.h>
 #include <errno.h>
 #include <sys/select.h>
+
+#include <fcntl.h>
 
 // Debug logging
 #define UART_LOG(msg_level, format_and_args...) \
@@ -164,14 +166,50 @@ struct uart_t {
 	int is_console;
 	chan_t chan[2];
 	int int_raised;
+    int fd;
 };
+
+int open_pty() {
+    int fd = posix_openpt(O_RDWR | O_NOCTTY);
+    if (fd < 0) {
+        perror("posix_openpt");
+        return fd;
+    }
+
+    if (grantpt(fd) != 0) {
+        perror("grantpt");
+        close(fd);
+        return -1;
+    }
+
+    if (unlockpt(fd) != 0) {
+        perror("unlockpt");
+        close(fd);
+        return -1;
+    }
+
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("fcntl");
+        close(fd);
+        return -1;
+    }
+
+    UART_LOG_WARNING("Starting PTY connected to UART_C: %s\n", ptsname(fd));
+
+    return fd;
+}
 
 uart_t *uart_new(const char *name, int is_console) {
 	uart_t *u=calloc(sizeof(uart_t), 1);
 	u->name=strdup(name);
 	u->is_console=is_console;
+    u->fd = -1;
 
 	if (is_console) uart_set_console_raw_mode();
+    else if(strcmp(name, "UART_C") == 0) {
+        u->fd = open_pty();
+    }
 
 	return u;
 }
@@ -244,6 +282,7 @@ void uart_write8(void *obj, unsigned int addr, unsigned int val) {
 		} else {
 			//Huh. The main console is on channel *B* of the UART.
 			if (u->is_console && chan==1) uart_console_printc(val);
+            else if (u->fd >= 0 && chan==0) write(u->fd, &val, 1);
 		}
 	} else if (a==REG_TC) {
 		UART_LOG_DEBUG("uart %s chan %s: write conf time const reg 0x%X\n", u->name, chan?"B":"A", val);
@@ -275,7 +314,14 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 			u->chan[chan].char_rcv = in_ch;
 			u->chan[chan].has_char_rcv = 1;
 		}
-	}
+	} else if (chan==0 && u->fd >= 0) {
+        uint8_t in_ch;
+        int count = read(u->fd, &in_ch, 1);
+        if (count >= 0) {
+            u->chan[chan].char_rcv = in_ch;
+            u->chan[chan].has_char_rcv = 1;
+        }
+    }
 
 	int ret=u->chan[chan].regs[a];
 	if (a==REG_STAT0) {
@@ -332,7 +378,17 @@ void uart_tick(uart_t *u, int ticklen_us) {
 				u->chan[chan].has_char_rcv = 1;
 			}
 		}
-	}
+	} else if (u->fd >= 0) {
+        int chan = 0; // A
+        if (u->chan[chan].regs[REG_INTCTL] & 0x18 && !u->chan[chan].has_char_rcv) {
+            uint8_t in_ch;
+            int count = read(u->fd, &in_ch, 1);
+            if (count >= 0) {
+                u->chan[chan].char_rcv = in_ch;
+                u->chan[chan].has_char_rcv = 1;
+            }
+        }
+    }
 
 	check_ints(u);
 }
