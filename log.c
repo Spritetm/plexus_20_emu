@@ -68,11 +68,11 @@ int log_printf(enum log_source source, enum log_level msg_level, const char *for
 	int printed = 0;
 
 	if (log_channel_verbose_level[source] >= msg_level) {
-		printf("%s", log_level_colour[msg_level]);
+		fprintf(stderr, "%s", log_level_colour[msg_level]);
 		va_start(ap, format);
-		printed = vprintf(format, ap);
+		printed = vfprintf(stderr, format, ap);
 		va_end(ap);
-		printf("%s", ANSI_COLOUR_NORMAL);
+		fprintf(stderr, "%s", ANSI_COLOUR_NORMAL);
 	}
 	return printed;
 }
