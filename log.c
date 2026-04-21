@@ -73,6 +73,7 @@ int log_printf(enum log_source source, enum log_level msg_level, const char *for
 		printed = vfprintf(stderr, format, ap);
 		va_end(ap);
 		fprintf(stderr, "%s", ANSI_COLOUR_NORMAL);
+		fflush(stderr);
 	}
 	return printed;
 }
