@@ -212,14 +212,14 @@ static void uart_poll_fd(uart_t* u) {
 				if (result == 1) {
 					if (u->chan[chan].fd == STDIN_FILENO) {
 						ctrl_c_pressed_times=0; //reset ctrl-c counter
-						//Swap around DEL and BSP. Terminals nowadays send the former,
-						//Unix expects the latter. Note you can usually press ctrl-backspace
-						//to get 'the other one', depending on your terminal.
-						if (c==0x7F) {
-							c=8;
-						} else if (c==8) {
-							c=0x7F;
-						}
+					}
+					//Swap around DEL and BSP. Terminals nowadays send the former,
+					//Unix expects the latter. Note you can usually press ctrl-backspace
+					//to get 'the other one', depending on your terminal.
+					if (c==0x7F) {
+						c=8;
+					} else if (c==8) {
+						c=0x7F;
 					}
 					chan_set_char_rcv(&u->chan[chan], c);
 				}
