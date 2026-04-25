@@ -321,27 +321,23 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 	int ret=u->chan[chan].regs[a];
 	if (a==REG_STAT0) {
 		//D7-0: break, underrun, cts, hunt, dcd, tx buf empty, int pending, rx char avail
-		int r=0;
-		if (u->chan[chan].us_to_loopback==0) r|=0x4; //handle tx buf empty flag
-		if (u->chan[chan].regs[REG_STAT0]&STAT0_RX_CHAR_AVAIL) {
-			r|=0x1;
+		if (u->chan[chan].us_to_loopback==0) ret|=0x4; //handle tx buf empty flag
+		if (ret&STAT0_RX_CHAR_AVAIL) {
 			if (u->chan[chan].regs[REG_INTCTL]&INTCTL_RX_INT_ALL && u->chan[chan].us_to_loopback==0) {
-				r|=0x3;
+				ret|=0x2;
 			}
 		}
-		UART_LOG_DEBUG("uart %s chan %s: read status0 -> %x\n", u->name, chan?"B":"A", addr, r);
-		ret=r;
+		UART_LOG_DEBUG("uart %s chan %s: read status0 -> %x\n", u->name, chan?"B":"A", addr, ret);
 	} else if (a==REG_STAT1) {
 		//D7-0: eof, crc err, rx overrun, parity err, res c2, res c1, res c0, all sent
 
 		//The diags only run two tests on this, and either expect 0x41 or 0x11 here. We simply
 		//hardcode this dependent on the test char. Yes, it's dirty, but we're never gonna
 		//need the CRC functionality anyway.
-		int r=0x41;
-		if (u->chan[chan].char_rcv==0x3E) r=0x11;
+		ret=0x41;
+		if (u->chan[chan].char_rcv==0x3E) ret=0x11;
 
-		UART_LOG_DEBUG("uart %s chan %s: read status1 -> %x\n", u->name, chan?"B":"A", addr, r);
-		ret=r;
+		UART_LOG_DEBUG("uart %s chan %s: read status1 -> %x\n", u->name, chan?"B":"A", addr, ret);
 	} else if (a==REG_DATA) {
 		ret = chan_get_char_rcv(&u->chan[chan]);
 		UART_LOG_DEBUG("uart %s chan%s, read char %x\n", u->name, chan?"B":"A", ret);
