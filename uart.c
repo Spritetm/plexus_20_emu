@@ -58,14 +58,18 @@ static void uart_sig_hdl(int sig) {
 	signal(sig, uart_sig_hdl);
 }
 
+static int set_raw_mode(int fd) {
+	struct termios raw = orig_termios;
+	tcgetattr(fd, &raw);
+	raw.c_lflag &= ~(ECHO | ICANON);
+	return tcsetattr(fd, TCSAFLUSH, &raw);
+}
+
 static void uart_set_console_raw_mode() {
 	tcgetattr(STDIN_FILENO, &orig_termios);
 	atexit(uart_disable_console_raw_mode);
 
-	struct termios raw = orig_termios;
-	tcgetattr(STDIN_FILENO, &raw);
-	raw.c_lflag &= ~(ECHO | ICANON);
-	int result = tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+	int result = set_raw_mode(STDIN_FILENO);
 	UART_LOG_INFO("Entering tty raw mode: %d (%d)\n", result, errno);
 	//Exiting an emulator doesn't make sense in the web version
 #ifndef __EMSCRIPTEN__
@@ -94,6 +98,15 @@ static int open_pty() {
 		perror("unlockpt");
 		close(fd);
 		return -1;
+	}
+
+	// temporarily open the pts to set raw mode: prevent reading spurious \r's before a terminal has connected.
+	int pts = open(ptsname(fd), O_RDWR | O_NOCTTY);
+	if (pts < 0) {
+		perror("open pts");
+	} else {
+		set_raw_mode(pts);
+		close(pts);
 	}
 
 	return fd;
