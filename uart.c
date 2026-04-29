@@ -167,6 +167,10 @@ uint8_t chan_get_char_rcv(chan_t* chan) {
 	return chan->char_rcv;
 }
 
+#define INT_ENABLED(chan) (chan.regs[REG_INTCTL] & INTCTL_RX_INT_ALL)
+#define STATUS_AFFECTS_VECTOR(chan) (chan.regs[REG_INTCTL] & INTCTL_STATUS_AFFECTS_VECTOR)
+#define HAS_CHAR_AVAIL(chan) (chan.regs[REG_STAT0] & STAT0_RX_CHAR_AVAIL)
+
 struct uart_t {
 	char *name;
 	chan_t chan[2];
@@ -201,7 +205,7 @@ static void uart_poll_fd(uart_t* u) {
 
 	//If user pressed ctl-c or any other character that generates a
 	//signal instead, handle that.
-	if (char_from_signal!=-1 && u->chan[1].fd == STDIN_FILENO && u->chan[1].regs[REG_INTCTL]&INTCTL_RX_INT_ALL && !u->chan[1].regs[REG_STAT0]&STAT0_RX_CHAR_AVAIL) {
+	if (char_from_signal!=-1 && u->chan[1].fd == STDIN_FILENO && INT_ENABLED(u->chan[1]) && !HAS_CHAR_AVAIL(u->chan[1])) {
 		chan_set_char_rcv(&u->chan[1], char_from_signal);
 		char_from_signal=-1;
 	}
@@ -209,7 +213,7 @@ static void uart_poll_fd(uart_t* u) {
 	FD_ZERO(&input);
 	int fd_max = -1;
 	for (int chan=0; chan<2; chan++) {
-		if (u->chan[chan].fd >= 0 && u->chan[chan].regs[REG_INTCTL]&INTCTL_RX_INT_ALL && !u->chan[chan].regs[REG_STAT0]&STAT0_RX_CHAR_AVAIL) {
+		if (u->chan[chan].fd >= 0 && INT_ENABLED(u->chan[chan]) && !HAS_CHAR_AVAIL(u->chan[chan])) {
 			FD_SET(u->chan[chan].fd, &input);
 			fd_max = u->chan[chan].fd > fd_max ? u->chan[chan].fd : fd_max;
 		}
@@ -246,9 +250,9 @@ static void check_ints(uart_t *u) {
 	int int_chan=0; //channel to raise the interrupt for
 	for (int c=0; c<2; c++) {
 		bool is_in_loopback = (u->chan[c].regs[REG_CMD]&CMD_LOOPBACK);
-		if (u->chan[c].regs[REG_INTCTL]&INTCTL_RX_INT_ALL) {
+		if (INT_ENABLED(u->chan[c])) {
 			//need to handle recv interrupts
-			if (u->chan[c].regs[REG_STAT0]&STAT0_RX_CHAR_AVAIL) {
+			if (HAS_CHAR_AVAIL(u->chan[c])) {
 				if (is_in_loopback) {
 					//should only receive the char after a while
 					if (u->chan[c].us_to_loopback==0) {
@@ -266,8 +270,7 @@ static void check_ints(uart_t *u) {
 	if (need_int!=u->int_raised) {
 		if (need_int) {
 			int vect = u->chan[0].regs[REG_VECT];
-			if (  (u->chan[0].regs[REG_INTCTL]&INTCTL_STATUS_AFFECTS_VECTOR)
-			   || (u->chan[1].regs[REG_INTCTL]&INTCTL_STATUS_AFFECTS_VECTOR)) {
+			if (STATUS_AFFECTS_VECTOR(u->chan[0]) || STATUS_AFFECTS_VECTOR(u->chan[1])) {
 				// we change the vector based on the highest priority thing to communicate
 				vect&=~0x7;
 				if (int_chan) { // B
@@ -336,7 +339,7 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 		//D7-0: break, underrun, cts, hunt, dcd, tx buf empty, int pending, rx char avail
 		if (u->chan[chan].us_to_loopback==0) ret|=0x4; //handle tx buf empty flag
 		if (ret&STAT0_RX_CHAR_AVAIL) {
-			if (u->chan[chan].regs[REG_INTCTL]&INTCTL_RX_INT_ALL && u->chan[chan].us_to_loopback==0) {
+			if (INT_ENABLED(u->chan[chan]) && u->chan[chan].us_to_loopback==0) {
 				ret|=0x2;
 			}
 		}
@@ -365,7 +368,7 @@ unsigned int uart_read8(void *obj, unsigned int addr) {
 
 void uart_tick(uart_t *u, int ticklen_us) {
 	for (int c=0; c<2; c++) {
-		if (u->chan[c].regs[REG_STAT0]&STAT0_RX_CHAR_AVAIL && u->chan[c].us_to_loopback) {
+		if (HAS_CHAR_AVAIL(u->chan[c]) && u->chan[c].us_to_loopback) {
 			if (u->chan[c].us_to_loopback>ticklen_us){
 				u->chan[c].us_to_loopback-=ticklen_us;
 			} else {
